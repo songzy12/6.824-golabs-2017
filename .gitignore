@@ -1,3 +1,4 @@
 pkg/
 api.key
+*.swp
 *-handin.tar.gz

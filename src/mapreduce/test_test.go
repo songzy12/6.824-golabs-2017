@@ -38,7 +38,7 @@ func ReduceFunc(key string, values []string) string {
 	for _, e := range values {
 		debug("Reduce %s %v\n", key, e)
 	}
-	return ""
+	return "" 
 }
 
 // Checks input file agaist output file: each input number should show up

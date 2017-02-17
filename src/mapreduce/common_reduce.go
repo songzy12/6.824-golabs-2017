@@ -1,5 +1,12 @@
 package mapreduce
 
+import (
+    "encoding/json"
+    "io"
+    "log"
+    "os"
+)
+
 // doReduce manages one reduce task: it reads the intermediate
 // key/value pairs (produced by the map phase) for this task, sorts the
 // intermediate key/value pairs by key, calls the user-defined reduce function
@@ -17,6 +24,37 @@ func doReduce(
 	// You'll need to read one intermediate file from each map task;
 	// reduceName(jobName, m, reduceTaskNumber) yields the file
 	// name from map task m.
+
+    file, _ := os.Create(outFile)
+    defer file.Close()
+
+    fileWriter := io.Writer(file)
+    enc := json.NewEncoder(fileWriter)
+
+    var keys = make(map[string][]string)
+
+    for m := 0; m < nMap; m++ {
+        var kv KeyValue
+        inFile, err := os.Open(reduceName(jobName, m, reduceTaskNumber))
+        if err != nil {
+            log.Fatal("doReduce: ", err)
+        }
+        defer inFile.Close()
+
+        jsonParser := json.NewDecoder(inFile)
+        for {
+            err = jsonParser.Decode(&kv);
+            if err != nil {
+                break
+            }
+            keys[kv.Key] = append(keys[kv.Key], kv.Value)
+        }
+    }
+
+    for key, values := range keys {
+        enc.Encode(KeyValue{key, reduceF(key, values)})
+    }
+
 	//
 	// Your doMap() encoded the key/value pairs in the intermediate
 	// files, so you will need to decode them. If you used JSON, you can
