@@ -2,12 +2,16 @@ package main
 
 import (
 	"fmt"
+    "log"
 	"mapreduce"
 	"os"
+    "strconv"
+    "strings"
+    "unicode"
 )
 
 //
-// The map function is called once for each file of input. The first
+// The map unicodunicodeefunction is called once for each file of input. The first
 // argument is the name of the input file, and the second is the
 // file's complete contents. You should ignore the input file name,
 // and look only at the contents argument. The return value is a slice
@@ -15,6 +19,16 @@ import (
 //
 func mapF(filename string, contents string) []mapreduce.KeyValue {
 	// TODO: you have to write this function
+    var res []mapreduce.KeyValue
+    f := func(c rune) bool {
+        return !unicode.IsLetter(c) && !unicode.IsNumber(c)
+    }
+    words := strings.FieldsFunc(contents, f)
+    for _, w := range words {
+        kv := mapreduce.KeyValue{w, "1"}
+        res = append(res, kv)
+    }
+    return res
 }
 
 //
@@ -24,6 +38,15 @@ func mapF(filename string, contents string) []mapreduce.KeyValue {
 //
 func reduceF(key string, values []string) string {
 	// TODO: you also have to write this function
+    var res = 0
+    for _, value := range values {
+        i, err := strconv.Atoi(value)
+        if err != nil {
+            log.Fatal("reduceF: ", err)
+        }
+        res += i
+    }
+    return strconv.Itoa(res)
 }
 
 // Can be run in 3 ways:
