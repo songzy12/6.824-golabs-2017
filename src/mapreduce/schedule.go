@@ -36,7 +36,6 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 
     var wg sync.WaitGroup
     for i := 0; i < ntasks; i++ {
-        w := <-registerChan
         var mapFile string
         switch phase {
             case mapPhase:
@@ -46,15 +45,20 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
         }
         wg.Add(1)
         args := DoTaskArgs{jobName, mapFile, phase, i, n_other}
-        go func(args DoTaskArgs, w string) {
-            ok := call(w, "Worker.DoTask", args, nil)
-            if ok == false {
-                fmt.Printf("schedule: RPC %s dotask error\n", w)
+        go func(args DoTaskArgs) {
+            // use for to handle failure
+            for {
+                w := <-registerChan
+                ok := call(w, "Worker.DoTask", args, nil)
+                if ok == false {
+                    fmt.Printf("schedule: RPC %s dotask error\n", w)
+                } else {
+                    wg.Done()
+                    registerChan <- w
+                    break
+                }
             }
-            // TODO
-            wg.Done()
-            registerChan <- w
-        }(args, w)
+        }(args)
     }
     wg.Wait()
 
