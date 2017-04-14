@@ -95,7 +95,6 @@ func TestBasicAgree2B(t *testing.T) {
 			t.Fatalf("got index %v but expected %v", xindex, index)
 		}
 	}
-
 	fmt.Printf("  ... Passed\n")
 }
 
@@ -331,6 +330,7 @@ func TestBackup2B(t *testing.T) {
 	cfg.one(rand.Int(), servers)
 
 	// put leader and one follower in a partition
+	DPrintf("put leader and one follower in a partition")
 	leader1 := cfg.checkOneLeader()
 	cfg.disconnect((leader1 + 2) % servers)
 	cfg.disconnect((leader1 + 3) % servers)
@@ -347,6 +347,7 @@ func TestBackup2B(t *testing.T) {
 	cfg.disconnect((leader1 + 1) % servers)
 
 	// allow other partition to recover
+	DPrintf("allow other partition to recover")
 	cfg.connect((leader1 + 2) % servers)
 	cfg.connect((leader1 + 3) % servers)
 	cfg.connect((leader1 + 4) % servers)
@@ -357,6 +358,7 @@ func TestBackup2B(t *testing.T) {
 	}
 
 	// now another partitioned leader and one follower
+	DPrintf("now another partitioned leader and one follower")
 	leader2 := cfg.checkOneLeader()
 	other := (leader1 + 2) % servers
 	if leader2 == other {
@@ -372,6 +374,7 @@ func TestBackup2B(t *testing.T) {
 	time.Sleep(RaftElectionTimeout / 2)
 
 	// bring original leader back to life,
+	DPrintf("bring original leader back to life,")
 	for i := 0; i < servers; i++ {
 		cfg.disconnect(i)
 	}
@@ -385,6 +388,7 @@ func TestBackup2B(t *testing.T) {
 	}
 
 	// now everyone
+	DPrintf("now everyone")
 	for i := 0; i < servers; i++ {
 		cfg.connect(i)
 	}
