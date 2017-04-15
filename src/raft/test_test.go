@@ -196,6 +196,7 @@ func TestConcurrentStarts2B(t *testing.T) {
 	var success bool
 loop:
 	for try := 0; try < 5; try++ {
+        DPrintf("Test (2B): try = %d", try)
 		if try > 0 {
 			// give solution some time to settle
 			time.Sleep(3 * time.Second)
@@ -226,6 +227,7 @@ loop:
 			}(ii)
 		}
 
+        // `defer wg.Done()` in the same block as `is <- i`
 		wg.Wait()
 		close(is)
 
@@ -240,6 +242,7 @@ loop:
 		cmds := []int{}
 		for index := range is {
 			cmd := cfg.wait(index, servers, term)
+            DPrintf("Test (2B): index = %d, cmd = %v", index, cmd)
 			if ix, ok := cmd.(int); ok {
 				if ix == -1 {
 					// peers have moved on to later terms

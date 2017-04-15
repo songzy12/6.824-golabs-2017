@@ -519,6 +519,12 @@ func (rf *Raft) sendAllAppendEntries() {
 
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
     // command is really a int, in config.go
+
+    // defer is necessary to pass Concurrent Starts 2B
+    // since the index may change during the process
+    rf.mu.Lock()
+    defer rf.mu.Unlock()
+
 	index, _ := rf.getLastLogIndexTerm()
     index ++
     term, isLeader := rf.GetState()
@@ -527,10 +533,8 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
     if !isLeader {
         return index, term, isLeader
     }
-    rf.mu.Lock()
     rf.log = append(rf.log, Entry{Command: command, Term: term})
     rf.persist()
-    rf.mu.Unlock()
     // just wait for the next heart beat to append entries
 	return index, term, isLeader
 }
