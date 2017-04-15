@@ -50,26 +50,31 @@ func TestReElection2A(t *testing.T) {
 	leader1 := cfg.checkOneLeader()
 
 	// if the leader disconnects, a new one should be elected.
+	DPrintf("if the leader disconnects, a new one should be elected.")
 	cfg.disconnect(leader1)
 	cfg.checkOneLeader()
 
 	// if the old leader rejoins, that shouldn't
 	// disturb the old leader.
+	DPrintf("if the old leader rejoins, that shouldn't")
 	cfg.connect(leader1)
 	leader2 := cfg.checkOneLeader()
 
 	// if there's no quorum, no leader should
 	// be elected.
+	DPrintf("if there's no quorum, no leader should")
 	cfg.disconnect(leader2)
 	cfg.disconnect((leader2 + 1) % servers)
 	time.Sleep(2 * RaftElectionTimeout)
 	cfg.checkNoLeader()
 
 	// if a quorum arises, it should elect a leader.
+	DPrintf("if a quorum arises, it should elect a leader.")
 	cfg.connect((leader2 + 1) % servers)
 	cfg.checkOneLeader()
 
 	// re-join of last node shouldn't prevent leader from existing.
+	DPrintf("re-join of last node shouldn't prevent leader from existing.")
 	cfg.connect(leader2)
 	cfg.checkOneLeader()
 
@@ -562,21 +567,25 @@ func TestPersist22C(t *testing.T) {
 
 	index := 1
 	for iters := 0; iters < 5; iters++ {
+        DPrintf("Test (2C): iters: %d, index: %d", iters, index)
 		cfg.one(10+index, servers)
 		index++
 
 		leader1 := cfg.checkOneLeader()
 
+        DPrintf("Test (2C): disconnect 1 2, index: %d", index)
 		cfg.disconnect((leader1 + 1) % servers)
 		cfg.disconnect((leader1 + 2) % servers)
 
 		cfg.one(10+index, servers-2)
 		index++
 
+        DPrintf("Test (2C): disconnect 0 3 4, index: %d", index)
 		cfg.disconnect((leader1 + 0) % servers)
 		cfg.disconnect((leader1 + 3) % servers)
 		cfg.disconnect((leader1 + 4) % servers)
 
+        DPrintf("Test (2C): start 1 2, index: %d", index)
 		cfg.start1((leader1 + 1) % servers)
 		cfg.start1((leader1 + 2) % servers)
 		cfg.connect((leader1 + 1) % servers)
@@ -584,16 +593,19 @@ func TestPersist22C(t *testing.T) {
 
 		time.Sleep(RaftElectionTimeout)
 
+        DPrintf("Test (2C): start 3, index: %d", index)
 		cfg.start1((leader1 + 3) % servers)
 		cfg.connect((leader1 + 3) % servers)
 
 		cfg.one(10+index, servers-2)
 		index++
 
+        DPrintf("Test (2C): connect 4 0, index: %d", index)
 		cfg.connect((leader1 + 4) % servers)
 		cfg.connect((leader1 + 0) % servers)
 	}
 
+    DPrintf("Test (2C): one(1000)")
 	cfg.one(1000, servers)
 
 	fmt.Printf("  ... Passed\n")
