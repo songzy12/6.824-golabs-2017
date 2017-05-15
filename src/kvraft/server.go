@@ -1,6 +1,7 @@
 package raftkv
 
 import (
+    "bytes"
 	"encoding/gob"
 	"labrpc"
 	"log"
@@ -173,7 +174,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	go func() {
 		for {
 			msg := <-kv.applyCh
-			/*if msg.UseSnapshot {
+			if msg.UseSnapshot {
 				var LastIncludedIndex int
 				var LastIncludedTerm int
 
@@ -184,11 +185,11 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 				d.Decode(&LastIncludedIndex)
 				d.Decode(&LastIncludedTerm)
 				kv.db = make(map[string]string)
-				kv.ack = make(map[int64]int)
+				kv.done = make(map[int64]int)
 				d.Decode(&kv.db)
-				d.Decode(&kv.ack)
+				d.Decode(&kv.done)
 				kv.mu.Unlock()
-			} else {*/
+			} else {
 				op := msg.Command.(Op) // this is type assertion
 				kv.mu.Lock()
 				if !kv.IsDone(op.Id, op.Serial) {
@@ -207,16 +208,16 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 				}
 
 				//need snapshot
-				/*if maxraftstate != -1 && kv.rf.GetPerisistSize() > maxraftstate {
+				if maxraftstate > 0 && kv.rf.GetRaftStateSize() > maxraftstate {
 					w := new(bytes.Buffer)
 					e := gob.NewEncoder(w)
 					e.Encode(kv.db)
-					e.Encode(kv.ack)
+					e.Encode(kv.done)
 					data := w.Bytes()
-					go kv.rf.StartSnapshot(data,msg.Index)
-				}*/
+					go kv.rf.StartSnapshot(data, msg.Index)
+				}
 				kv.mu.Unlock()
-			//}
+			}
 		}
 	}()
 
