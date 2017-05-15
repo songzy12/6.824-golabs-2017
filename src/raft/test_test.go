@@ -671,6 +671,7 @@ func TestFigure82C(t *testing.T) {
 				_, _, ok := cfg.rafts[i].Start(rand.Int())
 				if ok {
 					leader = i
+                    DPrintf("Test (2C): server %d Start a command", leader)
 				}
 			}
 		}
@@ -686,6 +687,7 @@ func TestFigure82C(t *testing.T) {
 		if leader != -1 {
 			cfg.crash1(leader)
 			nup -= 1
+            DPrintf("Test (2C): crash(%d), number of up servers is %d", leader, nup)
 		}
 
 		if nup < 3 {
@@ -698,12 +700,19 @@ func TestFigure82C(t *testing.T) {
 		}
 	}
 
+    DPrintf("Test (2C): reconnect all the servers")
+
 	for i := 0; i < servers; i++ {
 		if cfg.rafts[i] == nil {
 			cfg.start1(i)
 			cfg.connect(i)
 		}
 	}
+
+    DPrintf("Test (2C): one for all the %d servers", servers)
+	for i := 0; i < servers; i++ {
+        DPrintf("log entries of server %d: %v", i, cfg.rafts[i].Log)
+    }
 
 	cfg.one(rand.Int(), servers)
 

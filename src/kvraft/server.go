@@ -6,12 +6,20 @@ import (
 	"log"
 	"raft"
 	"sync"
+    "time"
+	"os"
 )
 
-const Debug = 0
+const Debug = 1
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug > 0 {
+		f, err := os.OpenFile("log", os.O_APPEND | os.O_CREATE | os.O_RDWR, 0666)
+        if err != nil {
+            log.Printf("error opening file: %v", err)
+        }
+        defer f.Close()
+        log.SetOutput(f)
 		log.Printf(format, a...)
 	}
 	return
@@ -22,6 +30,11 @@ type Op struct {
 	// Your definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
+	Op		string //"Put" or "Append" "Get"
+	Key		string
+	Value	string
+	Id		int64
+	Serial	int
 }
 
 type RaftKV struct {
@@ -33,15 +46,85 @@ type RaftKV struct {
 	maxraftstate int // snapshot if log grows this big
 
 	// Your definitions here.
+	db		map[string]string
+	done	map[int64]int
+	result	map[int]chan Op
 }
 
+func (kv *RaftKV) AppendEntry(entry Op) bool {
+	index, _, isLeader := kv.rf.Start(entry)
+	if !isLeader {
+		return false
+	}
+    DPrintf("%v is leader",  kv.me)
+
+	kv.mu.Lock()
+	ch, ok := kv.result[index]
+    // if not ok yet, then make a channel to wait it to finish
+	if !ok {
+		ch = make(chan Op, 1)
+		kv.result[index] = ch
+	}
+	kv.mu.Unlock()
+	select {
+		case op := <-ch:
+			return op == entry
+		case <-time.After(1000 * time.Millisecond):
+            DPrintf("AppendEntry timeout")
+			return false
+	}
+}
+
+func (kv *RaftKV) IsDone(id int64, serial int) bool {
+	v, ok := kv.done[id]
+	if ok {
+		// if v is smaller than serial, then it has been done
+		return v >= serial
+	}
+	return false
+}
+
+func (kv *RaftKV) Apply(args Op) {
+	switch args.Op {
+	case "Put":
+		kv.db[args.Key] = args.Value
+	case "Append":
+		kv.db[args.Key] += args.Value
+	}
+	kv.done[args.Id] = args.Serial
+}
 
 func (kv *RaftKV) Get(args *GetArgs, reply *GetReply) {
 	// Your code here.
+	entry := Op{Op:"Get", Key:args.Key, Id:args.Id, Serial:args.Serial}
+
+	ok := kv.AppendEntry(entry)
+	if !ok {
+		reply.WrongLeader = true
+	} else {
+		reply.WrongLeader = false
+
+		reply.Err = OK
+		kv.mu.Lock()
+		reply.Value = kv.db[args.Key]
+		kv.done[args.Id] = args.Serial
+		log.Printf("%d get:%v value:%s\n",kv.me,entry,reply.Value)
+		kv.mu.Unlock()
+	}
 }
 
 func (kv *RaftKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	// Your code here.
+	entry := Op{Op:args.Op, Key:args.Key, Value:args.Value,
+				Id:args.Id, Serial:args.Serial}
+	ok := kv.AppendEntry(entry)
+    //DPrintf("%v append entry %v returns %v", kv.rf, entry, ok)
+	if !ok {
+		reply.WrongLeader = true
+	} else {
+		reply.WrongLeader = false
+		reply.Err = OK
+	}
 }
 
 //
@@ -78,11 +161,64 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.maxraftstate = maxraftstate
 
 	// You may need initialization code here.
+	kv.db = make(map[string]string)
+	kv.done = make(map[int64]int)
+	kv.result = make(map[int]chan Op)
 
-	kv.applyCh = make(chan raft.ApplyMsg)
+    // applyCh to be 100
+	kv.applyCh = make(chan raft.ApplyMsg, 100)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 
 	// You may need initialization code here.
+	go func() {
+		for {
+			msg := <-kv.applyCh
+			/*if msg.UseSnapshot {
+				var LastIncludedIndex int
+				var LastIncludedTerm int
+
+				r := bytes.NewBuffer(msg.Snapshot)
+				d := gob.NewDecoder(r)
+
+				kv.mu.Lock()
+				d.Decode(&LastIncludedIndex)
+				d.Decode(&LastIncludedTerm)
+				kv.db = make(map[string]string)
+				kv.ack = make(map[int64]int)
+				d.Decode(&kv.db)
+				d.Decode(&kv.ack)
+				kv.mu.Unlock()
+			} else {*/
+				op := msg.Command.(Op) // this is type assertion
+				kv.mu.Lock()
+				if !kv.IsDone(op.Id, op.Serial) {
+					kv.Apply(op)
+				}
+
+				ch, ok := kv.result[msg.Index]
+				if ok {
+					select {
+						case <-kv.result[msg.Index]:
+						default:
+					}
+					ch <- op
+				} else {
+					kv.result[msg.Index] = make(chan Op, 1)
+				}
+
+				//need snapshot
+				/*if maxraftstate != -1 && kv.rf.GetPerisistSize() > maxraftstate {
+					w := new(bytes.Buffer)
+					e := gob.NewEncoder(w)
+					e.Encode(kv.db)
+					e.Encode(kv.ack)
+					data := w.Bytes()
+					go kv.rf.StartSnapshot(data,msg.Index)
+				}*/
+				kv.mu.Unlock()
+			//}
+		}
+	}()
 
 	return kv
 }

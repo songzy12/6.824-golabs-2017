@@ -77,6 +77,7 @@ type Raft struct {
     leaderVoted     chan bool   // candidate told me to vote
     leaderElected   chan bool   // I am selected as leader
     applyCommit     chan bool
+    chanApply       chan ApplyMsg // used to communicate with kvraft server
 
     nextIndex       []int   // init to leader last log index + 1 
     matchIndex      []int   // init to 0
@@ -171,7 +172,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
 
     // we init log with one entry with term 0
-    DPrintf("%d with term %d request %d with term %d to vote", args.CandidateId, args.Term, rf.me, rf.CurrentTerm)
+    //DPrintf("%d with term %d request %d with term %d to vote", args.CandidateId, args.Term, rf.me, rf.CurrentTerm)
 
     rf.mu.Lock()
     defer rf.mu.Unlock()
@@ -188,7 +189,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
         rf.VotedFor = -1
         rf.state = FOLLOWER
         rf.persist()
-        DPrintf("%d convert to follower, due to request vote args term", rf.me)
+        //DPrintf("%d convert to follower, due to request vote args term", rf.me)
         // convert 
     }
 
@@ -203,11 +204,11 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
         rf.state = FOLLOWER
         reply.VoteGranted = true
         rf.leaderVoted <- true
-        DPrintf("%d convert to follower, due to vote granted", rf.me)
+        //DPrintf("%d convert to follower, due to vote granted", rf.me)
         return
     }
 
-    DPrintf("%d has last log term %d index %d, while candidate %d only has log term %d log index %d", rf.me, lastLogTerm, lastLogIndex, args.CandidateId, args.LastLogTerm, args.LastLogIndex)
+    //DPrintf("%d has last log term %d index %d, while candidate %d only has log term %d log index %d", rf.me, lastLogTerm, lastLogIndex, args.CandidateId, args.LastLogTerm, args.LastLogIndex)
 
     reply.VoteGranted = false
     return
@@ -256,7 +257,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
         rf.VotedFor = -1
         rf.state = FOLLOWER
         rf.persist()
-        DPrintf("%d convert to follower, due to request vote reply term", rf.me)
+        //DPrintf("%d convert to follower, due to request vote reply term", rf.me)
         return
     }
     // I may be in a new term currently 
@@ -318,12 +319,12 @@ type AppendEntriesReply struct {
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-	DPrintf("follower %d received append entries from %d", rf.me, args.LeaderId)
+	//DPrintf("follower %d received append entries from %d", rf.me, args.LeaderId)
     rf.mu.Lock()
-	DPrintf("follower %d mu lock required", rf.me)
+	//DPrintf("follower %d mu lock required", rf.me)
     defer rf.mu.Unlock()
     term, _ := rf.GetState()
-    DPrintf("%d with term %d ask %d with term %d to append entries %v, rf.Log: %v", args.LeaderId, args.Term, rf.me, term, args.Entries, rf.Log)
+    //DPrintf("%d with term %d ask %d with term %d to append entries %v, rf.Log: %v", args.LeaderId, args.Term, rf.me, term, args.Entries, rf.Log)
     if args.Term < term {
         reply.Success = false
         reply.Term = term
@@ -337,7 +338,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
         rf.VotedFor = -1
         rf.state = FOLLOWER
         rf.persist()
-        DPrintf("%d convert to follower, due to append entries args term", rf.me)
+        //DPrintf("%d convert to follower, due to append entries args term", rf.me)
     }
 
     reply.Term = term
@@ -360,7 +361,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
             }
             reply.ConflictIndex = prevLogIndex + 1
             reply.Success = false
-            DPrintf("log of %d with index %d term %d mismatch with log leader %d with index %d term %d", rf.me, lastLogIndex, lastLogTerm, args.LeaderId, args.PrevLogIndex, args.PrevLogTerm)
+            //DPrintf("log of %d with index %d term %d mismatch with log leader %d with index %d term %d", rf.me, lastLogIndex, lastLogTerm, args.LeaderId, args.PrevLogIndex, args.PrevLogTerm)
             return
         }
     }
@@ -384,9 +385,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
             rf.commitIndex = args.LeaderCommit
         }
         rf.applyCommit <- true
-        DPrintf("leader commit is %d, commitIndex of %d is now %d", args.LeaderCommit, rf.me, rf.commitIndex)
+        //DPrintf("leader commit is %d, commitIndex of %d is now %d", args.LeaderCommit, rf.me, rf.commitIndex)
     }
-    DPrintf("%d now have log %v", rf.me, rf.Log)
+    //DPrintf("%d now have log %v", rf.me, rf.Log)
     rf.entryAppended <- true
     return
 }
@@ -394,7 +395,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
 	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
     if !ok {
-        DPrintf("append entries reply from %d is not ok", server)
+        //DPrintf("append entries reply from %d is not ok", server)
         return false
     }
     rf.mu.Lock()
@@ -409,7 +410,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
             rf.VotedFor = -1
             rf.state = FOLLOWER
             rf.persist()
-            DPrintf("%d convert to follower, due to append entries reply term", rf.me)
+            //DPrintf("%d convert to follower, due to append entries reply term", rf.me)
             // return timely to avoid mistake!
             return false
         }
@@ -421,7 +422,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
         // cannot decrease nextIndex by 1 each time, we need to be faster
         // TODO: ConflictIndex
         rf.nextIndex[server] = reply.ConflictIndex
-        DPrintf("nextIndex of leader %d for follower %d is now %d", rf.me, server, rf.nextIndex[server])
+        //DPrintf("nextIndex of leader %d for follower %d is now %d", rf.me, server, rf.nextIndex[server])
         // stupid me!
         return false
     }
@@ -434,8 +435,8 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 
     rf.nextIndex[server] = args.PrevLogIndex + len(args.Entries) + 1
     rf.matchIndex[server] = args.PrevLogIndex + len(args.Entries)
-    DPrintf("nextIndex of leader %d of follower %d now is %d", rf.me, server, rf.nextIndex[server])
-    DPrintf("matchIndex of leader %d of follower %d now is %d", rf.me, server, rf.matchIndex[server])
+    //DPrintf("nextIndex of leader %d of follower %d now is %d", rf.me, server, rf.nextIndex[server])
+    //DPrintf("matchIndex of leader %d of follower %d now is %d", rf.me, server, rf.matchIndex[server])
 
     return true
 }
@@ -474,7 +475,7 @@ func (rf *Raft) sendAllAppendEntries() {
 	}
 	if N != rf.commitIndex {
 		rf.commitIndex = N
-		DPrintf("commitIndex of leader %d is now %d with num", rf.me, rf.commitIndex, num)
+		//DPrintf("commitIndex of leader %d is now %d with num", rf.me, rf.commitIndex, num)
 		rf.applyCommit <- true
 	}
 
@@ -497,7 +498,7 @@ func (rf *Raft) sendAllAppendEntries() {
                                LeaderCommit: rf.commitIndex}
 
         reply := &AppendEntriesReply{}
-		DPrintf("leader %d send append entries to follower %d", rf.me, server)
+		//DPrintf("leader %d send append entries to follower %d", rf.me, server)
         go rf.sendAppendEntries(server, args, reply)
     }
 }
@@ -582,12 +583,14 @@ func Make(peers []*labrpc.ClientEnd, me int,
     rf.VotedFor = -1
     rf.state = FOLLOWER
     // since real Command is generated by rand.Int(), which is non-negative
+    // but it is not so for the kvraft, where Command is op
     rf.Log = []Entry{Entry{Command: -1, Term: 0}}
     // buffer size makes it not block when send
     rf.leaderVoted = make(chan bool, 100)
     rf.leaderElected = make(chan bool, 100)
     rf.entryAppended = make(chan bool, 100)
     rf.applyCommit = make(chan bool, 100)
+    rf.chanApply = applyCh
 
     rf.nextIndex = make([]int, len(rf.peers))
     rf.matchIndex = make([]int, len(rf.peers))
@@ -600,10 +603,10 @@ func Make(peers []*labrpc.ClientEnd, me int,
             <-rf.applyCommit
             rf.mu.Lock()
             for rf.commitIndex > rf.lastApplied {
-                rf.lastApplied += 1
-                msg := ApplyMsg{Index: rf.lastApplied,
-                                Command: rf.Log[rf.lastApplied].Command}
+                msg := ApplyMsg{Index: rf.lastApplied+1,
+                                Command: rf.Log[rf.lastApplied+1].Command}
                 applyCh <- msg
+                rf.lastApplied += 1
             }
             rf.mu.Unlock()
         }
@@ -615,7 +618,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
                 case FOLLOWER:
                     select{
                         case <-time.After(electionTimeout()):
-                            DPrintf("%d convert to candidate, due to election timeout", rf.me)
+                            //DPrintf("%d convert to candidate, due to election timeout", rf.me)
                             rf.state = CANDIDATE
                         // otherwise, the timer will reset automatically
                         case <- rf.entryAppended:
