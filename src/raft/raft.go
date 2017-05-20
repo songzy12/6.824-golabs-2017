@@ -461,6 +461,7 @@ func (rf *Raft) getPrevLogIndexTerm(server int) (int, int) {
         prevLogIndex = rf.nextIndex[server] - 1
     }
     // prevLogTerm is the term of rd.Log with prevLogIndex
+    // prevLogIndex may be less than baseIndex
     return prevLogIndex, rf.Log[prevLogIndex-baseIndex].Term
 }
 
@@ -503,8 +504,9 @@ func (rf *Raft) sendAllAppendEntries() {
             continue
         }
 
-        // TODO: why?
-        if rf.nextIndex[server] >= baseIndex {
+        // nextIndex > baseIndex, prevLogIndex >= baseIndex,
+        // only when follower can check the term of of prevLogIndex match or not
+        if rf.nextIndex[server] > baseIndex {
             prevLogIndex, prevLogTerm := rf.getPrevLogIndexTerm(server)
             entries := rf.Log[prevLogIndex+1-baseIndex:]
             args := &AppendEntriesArgs{Term: term,
