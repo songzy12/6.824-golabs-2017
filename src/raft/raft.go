@@ -433,7 +433,6 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
         }
 
         // cannot decrease nextIndex by 1 each time, we need to be faster
-        // TODO: ConflictIndex
         rf.nextIndex[server] = reply.ConflictIndex
         DPrintf("nextIndex of leader %d for follower %d is now %d", rf.me, server, rf.nextIndex[server])
         // stupid me!
@@ -585,12 +584,13 @@ func (rf *Raft) Kill() {
 
 func electionTimeout() time.Duration {
     // in test_test.go, RaftElectionTimeout = 1000
-    return time.Millisecond * time.Duration(300+rand.Intn(200))
+    // the election timeout can not be too short, for example, for Figure 8
+    return time.Millisecond * time.Duration(1000+rand.Intn(200))
 }
 
 func heartbeatTimeout() time.Duration {
     // no more than 10 per second
-    return time.Millisecond * time.Duration(120)
+    return time.Millisecond * time.Duration(110)
 }
 
 func (rf *Raft) GetRaftStateSize() int {
