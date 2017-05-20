@@ -584,7 +584,8 @@ func (rf *Raft) Kill() {
 
 func electionTimeout() time.Duration {
     // in test_test.go, RaftElectionTimeout = 1000
-    // the election timeout can not be too short, for example, for Figure 8
+    // the election timeout can not be too short,
+    // for example, in Figure 8, there will be multiple rpc calls for a successful append
     return time.Millisecond * time.Duration(1000+rand.Intn(200))
 }
 
