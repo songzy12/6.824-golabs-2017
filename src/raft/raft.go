@@ -368,7 +368,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
         }
     }
 
-    if args.PrevLogIndex+1 < baseIndex {
+    // since Log[baseIndex].Term will be compared with PreLogTerm
+    if args.PrevLogIndex < baseIndex {
         // when there is no baseIndex, there is no such condition
         // here reply.Success should be false
 
@@ -391,6 +392,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
     if args.LeaderCommit > rf.commitIndex {
         // should not compute with rf.getLastLogIndex()
         // since the follower's log maybe more than leader's log
+
         rf.commitIndex = args.PrevLogIndex + len(args.Entries)
         if args.LeaderCommit < rf.commitIndex {
             rf.commitIndex = args.LeaderCommit
