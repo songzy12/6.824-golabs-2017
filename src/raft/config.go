@@ -419,7 +419,7 @@ func (cfg *config) one(cmd int, expectedServers int) int {
 			t1 := time.Now()
 			for time.Since(t1).Seconds() < 2 {
 				nd, cmd1 := cfg.nCommitted(index)
-                DPrintf("Test (2C): one: nd of cmd1 %d is %d", cmd1, nd)
+                DPrintf("Test (2C): one: nd of cmd1 %d at index %d is %d", cmd1, index, nd)
 				if nd > 0 && nd >= expectedServers {
 					// committed
 					if cmd2, ok := cmd1.(int); ok && cmd2 == cmd {

@@ -190,11 +190,11 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
         rf.VotedFor = -1
         rf.state = FOLLOWER
         rf.persist()
-        //DPrintf("%d convert to follower, due to request vote args term", rf.me)
+        DPrintf("%d convert to follower, due to request vote args term", rf.me)
         // convert 
     }
 
-    reply.Term = term
+    reply.Term = rf.CurrentTerm // not term, since term may have been changed
     lastLogIndex, lastLogTerm := rf.getLastLogIndexTerm()
 
     if (rf.VotedFor == -1 || rf.VotedFor == args.CandidateId) &&
@@ -205,7 +205,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
         rf.state = FOLLOWER
         reply.VoteGranted = true
         rf.leaderVoted <- true
-        //DPrintf("%d convert to follower, due to vote granted", rf.me)
+        DPrintf("%d convert to follower, due to vote granted", rf.me)
         return
     }
 
@@ -320,12 +320,12 @@ type AppendEntriesReply struct {
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-	//DPrintf("follower %d received append entries from %d", rf.me, args.LeaderId)
+	DPrintf("follower %d received append entries from %d", rf.me, args.LeaderId)
     rf.mu.Lock()
-	//DPrintf("follower %d mu lock required", rf.me)
+	DPrintf("follower %d mu lock required", rf.me)
     defer rf.mu.Unlock()
     term, _ := rf.GetState()
-    //DPrintf("%d with term %d ask %d with term %d to append entries %v, rf.Log: %v", args.LeaderId, args.Term, rf.me, term, args.Entries, rf.Log)
+    DPrintf("%d with term %d ask %d with term %d to append entries %v, rf.Log: %v", args.LeaderId, args.Term, rf.me, term, args.Entries, rf.Log)
     if args.Term < term {
         reply.Success = false
         reply.Term = term
@@ -339,10 +339,10 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
         rf.VotedFor = -1
         rf.state = FOLLOWER
         rf.persist()
-        //DPrintf("%d convert to follower, due to append entries args term", rf.me)
+        DPrintf("%d convert to follower, due to append entries args term", rf.me)
     }
 
-    reply.Term = term
+    reply.Term = rf.CurrentTerm // not term, same reason
     baseIndex := rf.Log[0].Index
 
     if args.PrevLogIndex > baseIndex {
@@ -363,22 +363,30 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
             }
             reply.ConflictIndex = prevLogIndex + 1
             reply.Success = false
-            //DPrintf("log of %d with index %d term %d mismatch with log leader %d with index %d term %d", rf.me, lastLogIndex, lastLogTerm, args.LeaderId, args.PrevLogIndex, args.PrevLogTerm)
+            DPrintf("log of %d with index %d term %d mismatch with log leader %d with index %d term %d", rf.me, lastLogIndex, lastLogTerm, args.LeaderId, args.PrevLogIndex, args.PrevLogTerm)
             return
         }
     }
 
-    lastLogIndex, _ := rf.getLastLogIndexTerm()
-    for i := 0; i < len(args.Entries); i++ {
-        if args.PrevLogIndex+1+i >= lastLogIndex ||
-          rf.Log[args.PrevLogIndex+1+i-baseIndex] != args.Entries[i] {
-            rf.Log = append(rf.Log[:args.PrevLogIndex+1+i-baseIndex], args.Entries[i:]...)
-            break
-        }
-    }
-    rf.persist()
+    if args.PrevLogIndex+1 < baseIndex {
+        // when there is no baseIndex, there is no such condition
+        // here reply.Success should be false
 
-    reply.Success = true
+        // but when a log is tructed. it must be commited
+    } else {
+        lastLogIndex, _ := rf.getLastLogIndexTerm()
+        for i := 0; i < len(args.Entries); i++ {
+            // TODO: +1 or not 
+            if args.PrevLogIndex+1+i >= lastLogIndex+1 ||
+              rf.Log[args.PrevLogIndex+1+i-baseIndex] != args.Entries[i] {
+                rf.Log = append(rf.Log[:args.PrevLogIndex+1+i-baseIndex], args.Entries[i:]...)
+                break
+            }
+        }
+        rf.persist()
+
+        reply.Success = true
+    }
 
     if args.LeaderCommit > rf.commitIndex {
         // should not compute with rf.getLastLogIndex()
@@ -388,9 +396,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
             rf.commitIndex = args.LeaderCommit
         }
         rf.applyCommit <- true
-        //DPrintf("leader commit is %d, commitIndex of %d is now %d", args.LeaderCommit, rf.me, rf.commitIndex)
+        DPrintf("leader commit is %d, commitIndex of %d is now %d", args.LeaderCommit, rf.me, rf.commitIndex)
     }
-    //DPrintf("%d now have log %v", rf.me, rf.Log)
+    DPrintf("%d now have log %v", rf.me, rf.Log)
     rf.entryAppended <- true
     return
 }
@@ -398,7 +406,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
 	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
     if !ok {
-        //DPrintf("append entries reply from %d is not ok", server)
+        DPrintf("append entries reply from %d is not ok", server)
         return false
     }
     rf.mu.Lock()
@@ -413,7 +421,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
             rf.VotedFor = -1
             rf.state = FOLLOWER
             rf.persist()
-            //DPrintf("%d convert to follower, due to append entries reply term", rf.me)
+            DPrintf("%d convert to follower, due to append entries reply term", rf.me)
             // return timely to avoid mistake!
             return false
         }
@@ -425,7 +433,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
         // cannot decrease nextIndex by 1 each time, we need to be faster
         // TODO: ConflictIndex
         rf.nextIndex[server] = reply.ConflictIndex
-        //DPrintf("nextIndex of leader %d for follower %d is now %d", rf.me, server, rf.nextIndex[server])
+        DPrintf("nextIndex of leader %d for follower %d is now %d", rf.me, server, rf.nextIndex[server])
         // stupid me!
         return false
     }
@@ -438,19 +446,22 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 
     rf.nextIndex[server] = args.PrevLogIndex + len(args.Entries) + 1
     rf.matchIndex[server] = args.PrevLogIndex + len(args.Entries)
-    //DPrintf("nextIndex of leader %d of follower %d now is %d", rf.me, server, rf.nextIndex[server])
-    //DPrintf("matchIndex of leader %d of follower %d now is %d", rf.me, server, rf.matchIndex[server])
+    DPrintf("nextIndex of leader %d of follower %d now is %d", rf.me, server, rf.nextIndex[server])
+    DPrintf("matchIndex of leader %d of follower %d now is %d", rf.me, server, rf.matchIndex[server])
 
     return true
 }
 
 func (rf *Raft) getPrevLogIndexTerm(server int) (int, int) {
     // the current log may not contain index [rf.nextIndex[server] - 1]
+    baseIndex := rf.Log[0].Index
     i := len(rf.Log) - 1
+    prevLogIndex := rf.Log[i].Index
     if rf.nextIndex[server] - 1 <= rf.Log[i].Index {
-        return rf.nextIndex[server] - 1, rf.Log[i].Term
+        prevLogIndex = rf.nextIndex[server] - 1
     }
-    return rf.Log[i].Index, rf.Log[i].Term
+    // prevLogTerm is the term of rd.Log with prevLogIndex
+    return prevLogIndex, rf.Log[prevLogIndex-baseIndex].Term
 }
 
 func (rf *Raft) sendAllAppendEntries() {
@@ -479,7 +490,7 @@ func (rf *Raft) sendAllAppendEntries() {
 	}
 	if N != rf.commitIndex {
 		rf.commitIndex = N
-		//DPrintf("commitIndex of leader %d is now %d with num", rf.me, rf.commitIndex, num)
+		DPrintf("commitIndex of leader %d is now %d with num %d", rf.me, rf.commitIndex, num)
 		rf.applyCommit <- true
 	}
 
@@ -493,7 +504,7 @@ func (rf *Raft) sendAllAppendEntries() {
         }
 
         // TODO: why?
-        if rf.nextIndex[server] > baseIndex {
+        if rf.nextIndex[server] >= baseIndex {
             prevLogIndex, prevLogTerm := rf.getPrevLogIndexTerm(server)
             entries := rf.Log[prevLogIndex+1-baseIndex:]
             args := &AppendEntriesArgs{Term: term,
@@ -504,7 +515,7 @@ func (rf *Raft) sendAllAppendEntries() {
                                    LeaderCommit: rf.commitIndex}
 
             reply := &AppendEntriesReply{}
-		    //DPrintf("leader %d send append entries to follower %d", rf.me, server)
+		    DPrintf("leader %d send append entries to follower %d", rf.me, server)
             go rf.sendAppendEntries(server, args, reply)
         } else {
 				var args InstallSnapshotArgs
