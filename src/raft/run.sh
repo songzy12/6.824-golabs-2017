@@ -1,7 +1,8 @@
-rm log
-for i in {1..1}
+for i in {1..20}
 do
-    go test -run TestFigure82C -v
-    #go test -run TestFigure8Unreliable2C -v
-    #go test -run TestUnreliableChurn2C -v
+    rm log
+    go test -run TestFigure8Unreliable2C -v
+    rc=$?; 
+    echo $rc
+    if [[ $rc != 0 ]]; then exit $rc; fi
 done

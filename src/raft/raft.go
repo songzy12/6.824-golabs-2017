@@ -586,12 +586,12 @@ func electionTimeout() time.Duration {
     // in test_test.go, RaftElectionTimeout = 1000
     // the election timeout can not be too short,
     // for example, in Figure 8, there will be multiple rpc calls for a successful append
-    return time.Millisecond * time.Duration(1000+rand.Intn(200))
+    return time.Millisecond * time.Duration(750+rand.Intn(250)) // elect a leader within five seconds
 }
 
 func heartbeatTimeout() time.Duration {
     // no more than 10 per second
-    return time.Millisecond * time.Duration(110)
+    return time.Millisecond * time.Duration(60) // I think this is important
 }
 
 func (rf *Raft) GetRaftStateSize() int {

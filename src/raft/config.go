@@ -427,6 +427,7 @@ func (cfg *config) one(cmd int, expectedServers int) int {
 						return index
 					}
 				}
+                // need to reach consensus within 100 tries 
 				time.Sleep(20 * time.Millisecond)
 			}
 		} else {

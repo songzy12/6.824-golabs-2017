@@ -759,6 +759,7 @@ func TestFigure8Unreliable2C(t *testing.T) {
 
 	nup := servers
 	for iters := 0; iters < 1000; iters++ {
+        DPrintf("Test (2C): iters %d", iters)
 		if iters == 200 {
 			cfg.setlongreordering(true)
 		}
