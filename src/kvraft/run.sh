@@ -1,5 +1,7 @@
-rm log
-for i in {1..1}
+for i in {1..20}
 do
-    go test -run SnapshotUnreliableRecover -v
+    rm log
+    go test -run TestSnapshotUnreliable$ -v
+    rc=$?;
+    if [[ $rc != 0 ]]; then exit $rc; fi
 done

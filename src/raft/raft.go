@@ -377,7 +377,11 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
         // when there is no baseIndex, there is no such condition
         // here reply.Success should be false
 
-        // but when a log is tructed. it must be commited
+        // but when a log is tructed. it must be committed
+        // it is committed there, but it may not be committed here
+        // this should be handled in sendAllAppendEntries
+
+        // what is committed by me must have been committed by the master
     } else {
         lastLogIndex, _ := rf.getLastLogIndexTerm()
         for i := 0; i < len(args.Entries); i++ {
@@ -524,6 +528,7 @@ func (rf *Raft) sendAllAppendEntries() {
 		    DPrintf("leader %d send append entries to follower %d", rf.me, server)
             go rf.sendAppendEntries(server, args, reply)
         } else {
+                // if nextIndex <= baseIndex
 				var args InstallSnapshotArgs
 				args.Term = rf.CurrentTerm
 				args.LeaderId = rf.me
@@ -532,7 +537,7 @@ func (rf *Raft) sendAllAppendEntries() {
 				args.Data = rf.persister.snapshot
 				go func(server int,args InstallSnapshotArgs) {
 					reply := &InstallSnapshotReply{}
-					rf.sendInstallSnapshot(server, args, reply)
+					rf.sendInstallSnapshot(server, args, reply) // if ok, then update nextIndex
 				}(server,args)
         }
     }
@@ -611,7 +616,6 @@ func (rf *Raft) StartSnapshot(snapshot []byte, index int) {
 
 	if index <= baseIndex || index > lastIndex {
 		// in case having installed a snapshot from leader before snapshotting
-		// second condition is a hack
 		return
 	}
 
