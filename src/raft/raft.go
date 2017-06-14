@@ -382,10 +382,14 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
         // this should be handled in sendAllAppendEntries
 
         // what is committed by me must have been committed by the master
-    } else {
+    }
+
         lastLogIndex, _ := rf.getLastLogIndexTerm()
         for i := 0; i < len(args.Entries); i++ {
-            // TODO: +1 or not 
+            // TODO: +1 or not, < or <=
+            if args.PrevLogIndex+1+i-baseIndex <= 0 {
+                continue
+            }
             if args.PrevLogIndex+1+i >= lastLogIndex+1 ||
               rf.Log[args.PrevLogIndex+1+i-baseIndex] != args.Entries[i] {
                 rf.Log = append(rf.Log[:args.PrevLogIndex+1+i-baseIndex], args.Entries[i:]...)
@@ -395,7 +399,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
         rf.persist()
 
         reply.Success = true
-    }
 
     if args.LeaderCommit > rf.commitIndex {
         // should not compute with rf.getLastLogIndex()
