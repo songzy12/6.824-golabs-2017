@@ -334,6 +334,10 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
         return
     }
 
+    // the position of this heartbeat is important
+    // since the process may not finish until end
+    // but the heartbeat should be delivered whatever
+    rf.entryAppended <- true
     if args.Term > term {
         rf.CurrentTerm = args.Term
         rf.VotedFor = -1
@@ -401,7 +405,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
         DPrintf("leader commit is %d, commitIndex of %d is now %d", args.LeaderCommit, rf.me, rf.commitIndex)
     }
     DPrintf("%d now have log %v", rf.me, rf.Log)
-    rf.entryAppended <- true
     return
 }
 
@@ -586,7 +589,8 @@ func electionTimeout() time.Duration {
     // in test_test.go, RaftElectionTimeout = 1000
     // the election timeout can not be too short,
     // for example, in Figure 8, there will be multiple rpc calls for a successful append
-    return time.Millisecond * time.Duration(750+rand.Intn(250)) // elect a leader within five seconds
+    // that is not relevant, as long as heartbeat is short enough
+    return time.Millisecond * time.Duration(300+rand.Intn(200)) // elect a leader within five seconds
 }
 
 func heartbeatTimeout() time.Duration {
@@ -613,7 +617,6 @@ func (rf *Raft) StartSnapshot(snapshot []byte, index int) {
 
 	var newLogEntries []Entry
 
-    //TODO: why no Command:
 	newLogEntries = append(newLogEntries, Entry{Index: index, Term: rf.Log[index-baseIndex].Term})
 
 	for i := index + 1; i <= lastIndex; i++ {
@@ -778,7 +781,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
             baseIndex := rf.Log[0].Index
             for rf.commitIndex > rf.lastApplied {
                 msg := ApplyMsg{Index: rf.lastApplied+1,
-                                Command: rf.Log[rf.lastApplied+1-baseIndex].Command}
+                                Command: rf.Log[rf.lastApplied+1-baseIndex].Command} // TODO: why?
                 applyCh <- msg
                 rf.lastApplied += 1
             }
