@@ -21,6 +21,7 @@ type Op struct {
     Value   string
     Id      int64
     Serial  int
+
     Args    interface{}
 }
 
@@ -62,7 +63,8 @@ func (kv *ShardKV) AppendEntry(entry Op) bool {
         // when raft servers reach consensus, it send msg to applyCh
         // when applyCh finished applying, it send msg back
 		case op := <-ch:
-			return op == entry
+            // op may be ReconfigureArgs
+			return op.Id == entry.Id && op.Serial == entry.Serial
 		case <-time.After(200 * time.Millisecond):
             DPrintf("AppendEntry timeout")
 			return false

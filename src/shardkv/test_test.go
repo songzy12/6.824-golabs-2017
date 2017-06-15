@@ -453,6 +453,7 @@ func TestUnreliable1(t *testing.T) {
 	ck := cfg.makeClient()
 
 	cfg.join(0)
+    DPrintf("join 0 ... ")
 
 	n := 10
 	ka := make([]string, n)
@@ -460,12 +461,16 @@ func TestUnreliable1(t *testing.T) {
 	for i := 0; i < n; i++ {
 		ka[i] = strconv.Itoa(i) // ensure multiple shards
 		va[i] = randstring(5)
+        DPrintf("ck.Put %d of %d: %v %v", i, n, ka[i], va[i])
 		ck.Put(ka[i], va[i])
 	}
 
 	cfg.join(1)
+    DPrintf("join 1 ... ")
 	cfg.join(2)
+    DPrintf("join 2 ... ")
 	cfg.leave(0)
+    DPrintf("leave 0 ... ")
 
 	for ii := 0; ii < n*2; ii++ {
 		i := ii % n
@@ -476,7 +481,9 @@ func TestUnreliable1(t *testing.T) {
 	}
 
 	cfg.join(0)
+    DPrintf("join 0 ... ")
 	cfg.leave(1)
+    DPrintf("leave 1 ... ")
 
 	for ii := 0; ii < n*2; ii++ {
 		i := ii % n

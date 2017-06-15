@@ -390,8 +390,10 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
             if args.PrevLogIndex+1+i-baseIndex <= 0 {
                 continue
             }
+            // TODO: whether this is fine
             if args.PrevLogIndex+1+i >= lastLogIndex+1 ||
-              rf.Log[args.PrevLogIndex+1+i-baseIndex] != args.Entries[i] {
+              rf.Log[args.PrevLogIndex+1+i-baseIndex].Term != args.Entries[i].Term ||
+              rf.Log[args.PrevLogIndex+1+i-baseIndex].Index != args.Entries[i].Index {
                 rf.Log = append(rf.Log[:args.PrevLogIndex+1+i-baseIndex], args.Entries[i:]...)
                 break
             }
