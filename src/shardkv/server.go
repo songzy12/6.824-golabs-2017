@@ -83,31 +83,39 @@ func (kv *ShardKV) Apply(args Op) {
 
 	switch args.Op {
 	case "Put":
-		kv.db[key2shard(args.Key)][args.Key] = args.Value
+    if !kv.CheckValidKey(args.Key) {
+        return
+    }
+    kv.db[key2shard(args.Key)][args.Key] = args.Value
 	case "Append":
-		kv.db[key2shard(args.Key)][args.Key] += args.Value
+    if !kv.CheckValidKey(args.Key) {
+        return
+    }
+    kv.db[key2shard(args.Key)][args.Key] += args.Value
     case "Reconfigure":
 		args := args.Args.(ReconfigureArgs)
 		DPrintf("args.Cfg.Num: %d, kv.cfg.Num: %d", args.Cfg.Num, kv.cfg.Num)
-		if args.Cfg.Num > kv.cfg.Num {
-			// already reached consensus, merge db and ack
-			for shardIndex, data := range args.StoreShard {
-                DPrintf("kv.db: %v", kv.db)
-				for k, v := range data {
-					kv.db[shardIndex][k] = v
-				}
-                DPrintf("kv.db: %v", kv.db)
+        if args.Cfg.Num <= kv.cfg.Num {
+            return
+        }
+		// already reached consensus, merge db and ack
+		for shardIndex, data := range args.StoreShard {
+            DPrintf("kv.db: %v", kv.db)
+			for k, v := range data {
+				kv.db[shardIndex][k] = v
 			}
-			for clientId := range args.Ack {
-				if _, exist := kv.done[clientId]; !exist || kv.done[clientId] < args.Ack[clientId] {
-					kv.done[clientId] = args.Ack[clientId]
-				}
-			}
-			kv.cfg = args.Cfg
-			DPrintf("kv.cfg after reconfigure: %v", kv.cfg)
+            DPrintf("kv.db: %v", kv.db)
 		}
+		for clientId := range args.Ack {
+			if _, exist := kv.done[clientId]; !exist || kv.done[clientId] < args.Ack[clientId] {
+				kv.done[clientId] = args.Ack[clientId]
+			}
+		}
+		kv.cfg = args.Cfg
+		DPrintf("kv.cfg after reconfigure: %v", kv.cfg)
 	}
-		kv.done[args.Id] = args.Serial
+    // return timely
+    kv.done[args.Id] = args.Serial
 }
 
 func (kv *ShardKV) CheckValidKey(key string) bool {
@@ -152,6 +160,12 @@ func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	if !ok {
 		reply.WrongLeader = true
 	} else {
+		// reconfigure
+        if !kv.CheckValidKey(args.Key) {
+            reply.Err = ErrWrongGroup
+            return
+        }
+
 		reply.WrongLeader = false
 		reply.Err = OK
 	}
@@ -190,10 +204,10 @@ func (kv *ShardKV) TransferShard(args *TransferArgs, reply *TransferReply) {
 	defer kv.mu.Unlock()
 
 	DPrintf("kv.cfg.Num: %d, args.ConfigNum: %d", kv.cfg.Num, args.ConfigNum)
-	//if kv.cfg.Num < args.ConfigNum {
-	//	reply.Err = ErrNotReady
-	//	return
-	//}
+	if kv.cfg.Num < args.ConfigNum {
+		reply.Err = ErrNotReady
+		return
+	}
 
 	// at that case, the target shards have been released by prior owner
 	reply.Err = OK
@@ -408,6 +422,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 				kv.done = make(map[int64]int)
 				d.Decode(&kv.db)
 				d.Decode(&kv.done)
+                d.Decode(&kv.cfg)
 				kv.mu.Unlock()
 			} else {
 				op := msg.Command.(Op) // this is type assertion
@@ -434,6 +449,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 					e := gob.NewEncoder(w)
 					e.Encode(kv.db)
 					e.Encode(kv.done)
+                    e.Encode(kv.cfg)
 					data := w.Bytes()
 					go kv.rf.StartSnapshot(data, msg.Index)
 				}
