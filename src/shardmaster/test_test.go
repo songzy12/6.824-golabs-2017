@@ -85,9 +85,12 @@ func TestBasic(t *testing.T) {
 	ck := cfg.makeClient(cfg.All())
 
 	fmt.Printf("Test: Basic leave/join ...\n")
+    DPrintf("Query started")
 
 	cfa := make([]Config, 6)
 	cfa[0] = ck.Query(-1)
+
+    DPrintf("Query finished")
 
 	check(t, []int{}, ck)
 

@@ -50,6 +50,7 @@ func (ck *Clerk) Get(key string) string {
 	ck.serial++
 	ck.mu.Unlock()
 	for {
+        // keeps trying forever 
 		for _, v := range ck.servers {
 			var reply GetReply
 			ok := v.Call("RaftKV.Get", &args, &reply)

@@ -61,13 +61,16 @@ func (kv *RaftKV) AppendEntry(entry Op) bool {
 
 	kv.mu.Lock()
 	ch, ok := kv.result[index]
-    // if not ok yet, then make a channel to wait it to finish
+    // if has no result[index], then make a channel to wait it to finish
 	if !ok {
 		ch = make(chan Op, 1)
 		kv.result[index] = ch
 	}
 	kv.mu.Unlock()
 	select {
+        // AppendEntry will send the entry to raft servers
+        // when raft servers reach consensus, it send msg to applyCh
+        // when applyCh finished applying, it send msg back
 		case op := <-ch:
 			return op == entry
 		case <-time.After(1000 * time.Millisecond):
@@ -108,7 +111,7 @@ func (kv *RaftKV) Get(args *GetArgs, reply *GetReply) {
 		reply.Err = OK
 		kv.mu.Lock()
 		reply.Value = kv.db[args.Key]
-		kv.done[args.Id] = args.Serial
+		kv.done[args.Id] = args.Serial // this is Apply
 		log.Printf("%d get:%v value:%s\n",kv.me,entry,reply.Value)
 		kv.mu.Unlock()
 	}
@@ -175,6 +178,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 		for {
 			msg := <-kv.applyCh
 			if msg.UseSnapshot {
+                // when nextIndex[server] < baseIndex
 				var LastIncludedIndex int
 				var LastIncludedTerm int
 
