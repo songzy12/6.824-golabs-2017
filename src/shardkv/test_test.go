@@ -90,6 +90,7 @@ func TestJoinLeave(t *testing.T) {
 	ck := cfg.makeClient()
 
 	cfg.join(0)
+    DPrintf("  ... cfg.join(0)")
 
 	n := 10
 	ka := make([]string, n)
@@ -104,6 +105,7 @@ func TestJoinLeave(t *testing.T) {
 	}
 
 	cfg.join(1)
+    DPrintf("  ... cfg.join(1)")
 
 	for i := 0; i < n; i++ {
 		check(t, ck, ka[i], va[i])
@@ -113,6 +115,7 @@ func TestJoinLeave(t *testing.T) {
 	}
 
 	cfg.leave(0)
+    DPrintf("  ... cfg.leave(0)")
 
 	for i := 0; i < n; i++ {
 		check(t, ck, ka[i], va[i])
@@ -122,6 +125,7 @@ func TestJoinLeave(t *testing.T) {
 	}
 
 	// allow time for shards to transfer.
+    DPrintf(" ... sleep")
 	time.Sleep(1 * time.Second)
 
 	cfg.checklogs()

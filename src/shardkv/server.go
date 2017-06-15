@@ -1,7 +1,7 @@
 package shardkv
 
 
-// import "shardmaster"
+import "shardmaster"
 import "labrpc"
 import "raft"
 import "sync"
@@ -21,6 +21,7 @@ type Op struct {
     Value   string
     Id      int64
     Serial  int
+    Args    interface{}
 }
 
 type ShardKV struct {
@@ -34,9 +35,12 @@ type ShardKV struct {
 	maxraftstate int // snapshot if log grows this big
 
 	// Your definitions here.
-    db      map[string]string
+    db      [shardmaster.NShards]map[string]string
     done    map[int64]int
     result  map[int]chan Op
+
+    mck     *shardmaster.Clerk
+    cfg     shardmaster.Config
 }
 
 func (kv *ShardKV) AppendEntry(entry Op) bool {
@@ -44,7 +48,6 @@ func (kv *ShardKV) AppendEntry(entry Op) bool {
 	if !isLeader {
 		return false
 	}
-    DPrintf("%v is leader",  kv.me)
 
 	kv.mu.Lock()
 	ch, ok := kv.result[index]
@@ -60,7 +63,7 @@ func (kv *ShardKV) AppendEntry(entry Op) bool {
         // when applyCh finished applying, it send msg back
 		case op := <-ch:
 			return op == entry
-		case <-time.After(1000 * time.Millisecond):
+		case <-time.After(200 * time.Millisecond):
             DPrintf("AppendEntry timeout")
 			return false
 	}
@@ -76,13 +79,43 @@ func (kv *ShardKV) IsDone(id int64, serial int) bool {
 }
 
 func (kv *ShardKV) Apply(args Op) {
+    DPrintf("Op: %s", args.Op)
+
 	switch args.Op {
 	case "Put":
-		kv.db[args.Key] = args.Value
+		kv.db[key2shard(args.Key)][args.Key] = args.Value
 	case "Append":
-		kv.db[args.Key] += args.Value
+		kv.db[key2shard(args.Key)][args.Key] += args.Value
+    case "Reconfigure":
+		args := args.Args.(ReconfigureArgs)
+		DPrintf("args.Cfg.Num: %d, kv.cfg.Num: %d", args.Cfg.Num, kv.cfg.Num)
+		if args.Cfg.Num > kv.cfg.Num {
+			// already reached consensus, merge db and ack
+			for shardIndex, data := range args.StoreShard {
+                DPrintf("kv.db: %v", kv.db)
+				for k, v := range data {
+					kv.db[shardIndex][k] = v
+				}
+                DPrintf("kv.db: %v", kv.db)
+			}
+			for clientId := range args.Ack {
+				if _, exist := kv.done[clientId]; !exist || kv.done[clientId] < args.Ack[clientId] {
+					kv.done[clientId] = args.Ack[clientId]
+				}
+			}
+			kv.cfg = args.Cfg
+			DPrintf("kv.cfg after reconfigure: %v", kv.cfg)
+		}
 	}
-	kv.done[args.Id] = args.Serial
+		kv.done[args.Id] = args.Serial
+}
+
+func (kv *ShardKV) CheckValidKey(key string) bool {
+	shardId := key2shard(key)
+	if kv.gid != kv.cfg.Shards[shardId] {
+		return false
+	}
+	return true
 }
 
 func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
@@ -95,9 +128,15 @@ func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
 	} else {
 		reply.WrongLeader = false
 
+		// reconfigure
+        if !kv.CheckValidKey(args.Key) {
+            reply.Err = ErrWrongGroup
+            return
+        }
+
 		reply.Err = OK
 		kv.mu.Lock()
-		reply.Value = kv.db[args.Key]
+		reply.Value = kv.db[key2shard(args.Key)][args.Key]
 		kv.done[args.Id] = args.Serial // this is Apply
 		log.Printf("%d get:%v value:%s\n",kv.me,entry,reply.Value)
 		kv.mu.Unlock()
@@ -129,6 +168,142 @@ func (kv *ShardKV) Kill() {
 	// Your code here, if desired.
 }
 
+func (kv *ShardKV) SendTransferShard(gid int, args *TransferArgs, reply *TransferReply) bool {
+	for _, server := range kv.cfg.Groups[gid] {
+		//DPrintln("server", kv.gid, kv.me, "send transfer to:", gid, server)
+		srv := kv.make_end(server)
+		ok := srv.Call("ShardKV.TransferShard", args, reply)
+		if ok {
+			DPrintf("reply.Err: %s", reply.Err)
+			if reply.Err == OK {
+				return true
+			} else if reply.Err == ErrNotReady {
+				return false
+			}
+		}
+	}
+	return false
+}
+
+func (kv *ShardKV) TransferShard(args *TransferArgs, reply *TransferReply) {
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+
+	DPrintf("kv.cfg.Num: %d, args.ConfigNum: %d", kv.cfg.Num, args.ConfigNum)
+	//if kv.cfg.Num < args.ConfigNum {
+	//	reply.Err = ErrNotReady
+	//	return
+	//}
+
+	// at that case, the target shards have been released by prior owner
+	reply.Err = OK
+	//??? why have to init in remote server
+	reply.Ack = make(map[int64]int)
+	for i := 0; i < shardmaster.NShards; i++ {
+		reply.StoreShard[i] = make(map[string]string)
+	}
+	for _, shardIndex := range args.Shards {
+		for k, v := range kv.db[shardIndex] {
+			reply.StoreShard[shardIndex][k] = v
+		}
+	}
+
+	for clientId := range kv.done {
+		reply.Ack[clientId] = kv.done[clientId]
+	}
+}
+
+func (kv *ShardKV) GetReconfigure(nextCfg shardmaster.Config) (ReconfigureArgs, bool) {
+	retArgs := ReconfigureArgs{Cfg:nextCfg}
+	retArgs.Ack = make(map[int64]int)
+	for i := 0; i < shardmaster.NShards; i++ {
+		retArgs.StoreShard[i] = make(map[string]string)
+	}
+	retOk := true
+
+	transShards := make(map[int][]int)
+	for i := 0; i < shardmaster.NShards; i++ {
+		if kv.cfg.Shards[i] != kv.gid && nextCfg.Shards[i] == kv.gid {
+            // trans shard i from gid to kv.gid
+			gid := kv.cfg.Shards[i]
+			if gid != 0 {
+				if _, ok := transShards[gid]; !ok {
+					transShards[gid] = []int{i}
+				} else {
+					transShards[gid] = append(transShards[gid], i)
+				}
+			}
+		}
+	}
+
+    DPrintf("transShards: %v", transShards)
+
+    // transShards[gid]: shards id from gid to kv.gid
+	var ackMutex sync.Mutex
+	var wait sync.WaitGroup
+	for gid, value := range transShards {	// iterating map
+		wait.Add(1)
+		go func(gid int, value []int) {
+			defer wait.Done()
+			var reply TransferReply
+
+			if kv.SendTransferShard(gid, &TransferArgs{ConfigNum:nextCfg.Num, Shards:value}, &reply) {
+				ackMutex.Lock()
+				//!!! be careful that can not init args here, for
+				// it will re-init every time, lost data!
+				for shardIndex, data := range reply.StoreShard {
+					for k, v := range data {
+						retArgs.StoreShard[shardIndex][k] = v
+					}
+				}
+				for clientId := range reply.Ack {
+					if _, exist := retArgs.Ack[clientId]; !exist || retArgs.Ack[clientId] < reply.Ack[clientId] {
+						retArgs.Ack[clientId] = reply.Ack[clientId]
+						//retArgs.Replies[clientId] = reply.Replies[clientId]
+					}
+				}
+				ackMutex.Unlock()
+			} else {
+				retOk = false
+			}
+		} (gid, value)
+	}
+	wait.Wait()
+
+	DPrintf("retArgs: %v, retOk: %v", retArgs, retOk)
+	return retArgs, retOk
+}
+
+func (kv *ShardKV) SyncReconfigure(args ReconfigureArgs) bool {
+	// retry 3 times
+	for i := 0; i < 3; i++ {
+		index, _, isLeader := kv.rf.Start(Op{Op:"Reconfigure", Args:args})
+		if !isLeader {
+			return false
+		}
+
+		kv.mu.Lock()
+		if _, ok := kv.result[index]; !ok {
+			kv.result[index] = make(chan Op, 1)
+		}
+		chanMsg := kv.result[index]
+		kv.mu.Unlock()
+
+		select {
+		case msg := <-chanMsg:
+			if tmpArgs, ok := msg.Args.(ReconfigureArgs); ok {
+				DPrintf("args.Cfg.Num: %d, tmpArgs.Cfg.Num: %d", args.Cfg.Num, tmpArgs.Cfg.Num)
+				if args.Cfg.Num == tmpArgs.Cfg.Num {
+					return true
+				}
+			}
+		case <- time.After(200 * time.Millisecond):
+			DPrintf("SyncReconfigure timeout")
+			continue
+		}
+	}
+	return false
+}
 
 //
 // servers[] contains the ports of the servers in this group.
@@ -163,6 +338,17 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	// Go's RPC library to marshall/unmarshall.
 	gob.Register(Op{})
 
+	gob.Register(PutAppendArgs{})
+	gob.Register(GetArgs{})
+	gob.Register(PutAppendReply{})
+	gob.Register(GetReply{})
+	gob.Register(shardmaster.Config{})
+
+	gob.Register(ReconfigureArgs{})
+	gob.Register(ReconfigureReply{})
+	gob.Register(TransferArgs{})
+	gob.Register(TransferReply{})
+
 	kv := new(ShardKV)
 	kv.me = me
 	kv.maxraftstate = maxraftstate
@@ -171,15 +357,36 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	kv.masters = masters
 
 	// Your initialization code here.
-	kv.db = make(map[string]string)
+    for i := 0; i < shardmaster.NShards; i++ {
+        kv.db[i] = make(map[string]string)
+    }
 	kv.done = make(map[int64]int)
 	kv.result = make(map[int]chan Op)
 
 	// Use something like this to talk to the shardmaster:
-	// kv.mck = shardmaster.MakeClerk(kv.masters)
+	kv.mck = shardmaster.MakeClerk(kv.masters)
 
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
+
+    go func() {
+		for {
+			if _, isLeader := kv.rf.GetState(); isLeader {
+				latestCfg := kv.mck.Query(-1)
+				for i := kv.cfg.Num + 1; i <= latestCfg.Num; i++ {
+					args, ok := kv.GetReconfigure(kv.mck.Query(i))
+					DPrintf("args: %v, ok: %v", args, ok)
+					if !ok {
+						break
+					}
+					if !kv.SyncReconfigure(args) {
+						break
+					}
+				}
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+    }()
 
     go func() {
 		for {
@@ -195,7 +402,9 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 				kv.mu.Lock()
 				d.Decode(&LastIncludedIndex)
 				d.Decode(&LastIncludedTerm)
-				kv.db = make(map[string]string)
+                for i := 0; i < shardmaster.NShards; i++ {
+                    kv.db[i] = make(map[string]string)
+                }
 				kv.done = make(map[int64]int)
 				d.Decode(&kv.db)
 				d.Decode(&kv.done)
@@ -203,7 +412,8 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 			} else {
 				op := msg.Command.(Op) // this is type assertion
 				kv.mu.Lock()
-				if !kv.IsDone(op.Id, op.Serial) {
+
+				if op.Op == "Reconfigure" || !kv.IsDone(op.Id, op.Serial) {
 					kv.Apply(op)
 				}
 
