@@ -12,6 +12,7 @@ import "labrpc"
 import "crypto/rand"
 import "math/big"
 import "shardmaster"
+import "sync"
 import "time"
 
 //
@@ -40,6 +41,9 @@ type Clerk struct {
 	config   shardmaster.Config
 	make_end func(string) *labrpc.ClientEnd
 	// You will have to modify this struct.
+    mu      sync.Mutex
+    id      int64
+    serial  int
 }
 
 //
@@ -56,6 +60,8 @@ func MakeClerk(masters []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 	ck.sm = shardmaster.MakeClerk(masters)
 	ck.make_end = make_end
 	// You'll have to add code here.
+    ck.id = nrand()
+    ck.serial = 0
 	return ck
 }
 
@@ -68,6 +74,12 @@ func MakeClerk(masters []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 func (ck *Clerk) Get(key string) string {
 	args := GetArgs{}
 	args.Key = key
+
+    ck.mu.Lock()
+    ck.serial++
+    args.Id = ck.id
+    args.Serial = ck.serial
+    ck.mu.Unlock()
 
 	for {
 		shard := key2shard(key)
@@ -104,11 +116,17 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	args.Value = value
 	args.Op = op
 
+    ck.mu.Lock()
+    ck.serial++
+    args.Id = ck.id
+    args.Serial = ck.serial
+    ck.mu.Unlock()
 
 	for {
 		shard := key2shard(key)
 		gid := ck.config.Shards[shard]
 		if servers, ok := ck.config.Groups[gid]; ok {
+            // it is just like before 
 			for si := 0; si < len(servers); si++ {
 				srv := ck.make_end(servers[si])
 				var reply PutAppendReply

@@ -5,7 +5,10 @@ package shardkv
 import "labrpc"
 import "raft"
 import "sync"
+import "time"
 import "encoding/gob"
+import "log"
+import "bytes"
 
 
 
@@ -13,6 +16,11 @@ type Op struct {
 	// Your definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
+    Op      string
+    Key     string
+    Value   string
+    Id      int64
+    Serial  int
 }
 
 type ShardKV struct {
@@ -26,15 +34,88 @@ type ShardKV struct {
 	maxraftstate int // snapshot if log grows this big
 
 	// Your definitions here.
+    db      map[string]string
+    done    map[int64]int
+    result  map[int]chan Op
 }
 
+func (kv *ShardKV) AppendEntry(entry Op) bool {
+	index, _, isLeader := kv.rf.Start(entry)
+	if !isLeader {
+		return false
+	}
+    DPrintf("%v is leader",  kv.me)
+
+	kv.mu.Lock()
+	ch, ok := kv.result[index]
+    // if has no result[index], then make a channel to wait it to finish
+	if !ok {
+		ch = make(chan Op, 1)
+		kv.result[index] = ch
+	}
+	kv.mu.Unlock()
+	select {
+        // AppendEntry will send the entry to raft servers
+        // when raft servers reach consensus, it send msg to applyCh
+        // when applyCh finished applying, it send msg back
+		case op := <-ch:
+			return op == entry
+		case <-time.After(1000 * time.Millisecond):
+            DPrintf("AppendEntry timeout")
+			return false
+	}
+}
+
+func (kv *ShardKV) IsDone(id int64, serial int) bool {
+	v, ok := kv.done[id]
+	if ok {
+		// if v is smaller than serial, then it has been done
+		return v >= serial
+	}
+	return false
+}
+
+func (kv *ShardKV) Apply(args Op) {
+	switch args.Op {
+	case "Put":
+		kv.db[args.Key] = args.Value
+	case "Append":
+		kv.db[args.Key] += args.Value
+	}
+	kv.done[args.Id] = args.Serial
+}
 
 func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
 	// Your code here.
+    entry := Op{Op:"Get", Key:args.Key, Id:args.Id, Serial:args.Serial}
+
+	ok := kv.AppendEntry(entry)
+	if !ok {
+		reply.WrongLeader = true
+	} else {
+		reply.WrongLeader = false
+
+		reply.Err = OK
+		kv.mu.Lock()
+		reply.Value = kv.db[args.Key]
+		kv.done[args.Id] = args.Serial // this is Apply
+		log.Printf("%d get:%v value:%s\n",kv.me,entry,reply.Value)
+		kv.mu.Unlock()
+	}
 }
 
 func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	// Your code here.
+	entry := Op{Op:args.Op, Key:args.Key, Value:args.Value,
+				Id:args.Id, Serial:args.Serial}
+	ok := kv.AppendEntry(entry)
+    //DPrintf("%v append entry %v returns %v", kv.rf, entry, ok)
+	if !ok {
+		reply.WrongLeader = true
+	} else {
+		reply.WrongLeader = false
+		reply.Err = OK
+	}
 }
 
 //
@@ -90,6 +171,9 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	kv.masters = masters
 
 	// Your initialization code here.
+	kv.db = make(map[string]string)
+	kv.done = make(map[int64]int)
+	kv.result = make(map[int]chan Op)
 
 	// Use something like this to talk to the shardmaster:
 	// kv.mck = shardmaster.MakeClerk(kv.masters)
@@ -97,6 +181,56 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 
+    go func() {
+		for {
+			msg := <-kv.applyCh
+			if msg.UseSnapshot {
+                // when nextIndex[server] < baseIndex
+				var LastIncludedIndex int
+				var LastIncludedTerm int
+
+				r := bytes.NewBuffer(msg.Snapshot)
+				d := gob.NewDecoder(r)
+
+				kv.mu.Lock()
+				d.Decode(&LastIncludedIndex)
+				d.Decode(&LastIncludedTerm)
+				kv.db = make(map[string]string)
+				kv.done = make(map[int64]int)
+				d.Decode(&kv.db)
+				d.Decode(&kv.done)
+				kv.mu.Unlock()
+			} else {
+				op := msg.Command.(Op) // this is type assertion
+				kv.mu.Lock()
+				if !kv.IsDone(op.Id, op.Serial) {
+					kv.Apply(op)
+				}
+
+				ch, ok := kv.result[msg.Index]
+				if ok {
+					select {
+						case <-kv.result[msg.Index]:
+						default:
+					}
+					ch <- op
+				} else {
+					kv.result[msg.Index] = make(chan Op, 1)
+				}
+
+				//need snapshot
+				if maxraftstate > 0 && kv.rf.GetRaftStateSize() > maxraftstate {
+					w := new(bytes.Buffer)
+					e := gob.NewEncoder(w)
+					e.Encode(kv.db)
+					e.Encode(kv.done)
+					data := w.Bytes()
+					go kv.rf.StartSnapshot(data, msg.Index)
+				}
+				kv.mu.Unlock()
+			}
+		}
+	}()
 
 	return kv
 }

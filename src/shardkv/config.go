@@ -9,11 +9,27 @@ import "os"
 import crand "crypto/rand"
 import "math/rand"
 import "encoding/base64"
+import "log"
 import "sync"
 import "runtime"
 import "raft"
 import "strconv"
 import "fmt"
+
+const Debug = 1
+
+func DPrintf(format string, a ...interface{}) (n int, err error) {
+    if Debug > 0 {
+        f, err := os.OpenFile("log_shardkv", os.O_APPEND | os.O_CREATE | os.O_RDWR, 0666)
+        if err != nil {
+            log.Printf("error opening file: %v", err)
+        }
+        defer f.Close()
+        log.SetOutput(f)
+        log.Printf(format, a...)
+    }
+    return
+}
 
 func randstring(n int) string {
 	b := make([]byte, 2*n)
