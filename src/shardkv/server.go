@@ -108,6 +108,7 @@ func (kv *ShardKV) Apply(args Op) {
 			}
 		}
 		kv.cfg = args.Cfg
+
 		DPrintf("kv.cfg after reconfigure: %v", kv.cfg)
 	}
     // return timely
@@ -128,7 +129,7 @@ func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
     entry := Op{Op:"Get", Key:args.Key, Id:args.Id, Serial:args.Serial}
 
 	ok, Err := kv.AppendEntry(entry)
-    DPrintf("%v append entry %v returns %v, %s", kv.rf, entry, ok, Err)
+    //DPrintf("%v append entry %v returns %v, %s", kv.rf, entry, ok, Err)
 	if !ok {
 		reply.WrongLeader = true
 	} else {
@@ -150,7 +151,7 @@ func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 				Id:args.Id, Serial:args.Serial}
 
 	ok, Err := kv.AppendEntry(entry)
-    DPrintf("%v append entry %v returns %v, %s", kv.rf, entry, ok, Err)
+    //DPrintf("%v append entry %v returns %v, %s", kv.rf, entry, ok, Err)
 	if !ok {
 		reply.WrongLeader = true
 	} else {

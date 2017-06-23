@@ -80,12 +80,10 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	ck.serial++
 	ck.mu.Unlock()
 	for {
-		for i, v := range ck.servers {
+		for _, v := range ck.servers {
 			var reply PutAppendReply
 			ok := v.Call("RaftKV.PutAppend", &args, &reply)
-            DPrintf("%d is called for PutAppend", i)
 			if ok && !reply.WrongLeader {
-                DPrintf("%d is not wrong leader", i)
 				return
 			}
 		}

@@ -57,7 +57,6 @@ func (kv *RaftKV) AppendEntry(entry Op) bool {
 	if !isLeader {
 		return false
 	}
-    DPrintf("%v is leader",  kv.me)
 
 	kv.mu.Lock()
 	ch, ok := kv.result[index]
@@ -93,6 +92,7 @@ func (kv *RaftKV) Apply(args Op) {
 	case "Put":
 		kv.db[args.Key] = args.Value
 	case "Append":
+        DPrintf("%d append %s to %s: %s", kv.me, args.Value, args.Key, kv.db[args.Key])
 		kv.db[args.Key] += args.Value
 	}
 	kv.done[args.Id] = args.Serial
@@ -108,12 +108,19 @@ func (kv *RaftKV) Get(args *GetArgs, reply *GetReply) {
 	} else {
 		reply.WrongLeader = false
 
-		reply.Err = OK
 		kv.mu.Lock()
-		reply.Value = kv.db[args.Key]
+
+		value, ok_ := kv.db[args.Key]
+		DPrintf("%d get %v: %s\n", kv.me, entry, reply.Value)
+        if !ok_ {
+            reply.Err = ErrNoKey
+        } else {
+		    reply.Err = OK
+            reply.Value = value
+        }
 		kv.done[args.Id] = args.Serial // this is Apply
-		log.Printf("%d get:%v value:%s\n",kv.me,entry,reply.Value)
-		kv.mu.Unlock()
+
+        kv.mu.Unlock()
 	}
 }
 

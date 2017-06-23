@@ -16,16 +16,16 @@ do
     #go test -run MissChange -v
     #rc=$?
     #if [[ $rc != 0 ]]; then exit $rc; fi
-    rm log*
-    go test -run Concurrent2 -v
-    rc=$?
-    if [[ $rc != 0 ]]; then exit $rc; fi
+    #rm log*
+    #go test -run Concurrent2 -v
+    #rc=$?
+    #if [[ $rc != 0 ]]; then exit $rc; fi
     #rm log*
     #go test -run Concurrent1 -v
     #rc=$?
     #if [[ $rc != 0 ]]; then exit $rc; fi
-    #rm log*
-    #go test -run Unreliable -v
-    #rc=$?
-    #if [[ $rc != 0 ]]; then exit $rc; fi
+    rm log*
+    go test -run Unreliable2 -v
+    rc=$?
+    if [[ $rc != 0 ]]; then exit $rc; fi
 done
