@@ -109,6 +109,14 @@ func (kv *ShardKV) Apply(args Op) {
 		}
 		kv.cfg = args.Cfg
 
+        //for i := 0; i < shardmaster.NShards; i++ {
+        //    if kv.cfg.Shards[i] != kv.gid {
+        //        for k, _ := range kv.db[i] {
+        //            delete(kv.db[i], k)
+        //        }
+        //    }
+        //}
+
 		DPrintf("kv.cfg after reconfigure: %v", kv.cfg)
 	}
     // return timely
