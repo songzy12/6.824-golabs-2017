@@ -1,5 +1,5 @@
 rm log
-for i in {1..20}
+for i in {1..10}
 do
     go test -run 2A -v
     rc=$?;

@@ -15,7 +15,7 @@ const Debug = 1
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug > 0 {
-		f, err := os.OpenFile("log", os.O_APPEND | os.O_CREATE | os.O_RDWR, 0666)
+		f, err := os.OpenFile("log_kvraft", os.O_APPEND | os.O_CREATE | os.O_RDWR, 0666)
         if err != nil {
             log.Printf("error opening file: %v", err)
         }
@@ -73,7 +73,7 @@ func (kv *RaftKV) AppendEntry(entry Op) bool {
         // when applyCh finished applying, it send msg back
 		case op := <-ch:
 			return op == entry
-		case <-time.After(1000 * time.Millisecond):
+		case <-time.After(200 * time.Millisecond):
             DPrintf("AppendEntry timeout")
 			return false
 	}

@@ -72,9 +72,9 @@ type TransferArgs struct {
 	Shards		[]int
 }
 
- type TransferReply struct {
-	 StoreShard		[shardmaster.NShards]map[string]string
-	 Ack			map[int64]int
-	 WrongLeader	bool
-	 Err			Err
- }
+type TransferReply struct {
+    StoreShard		[shardmaster.NShards]map[string]string
+    Ack			map[int64]int
+    WrongLeader	bool
+    Err			Err
+}

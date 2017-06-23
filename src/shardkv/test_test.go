@@ -90,7 +90,7 @@ func TestJoinLeave(t *testing.T) {
 	ck := cfg.makeClient()
 
 	cfg.join(0)
-    DPrintf("  ... cfg.join(0)")
+    DPrintf("JoinLeave: join %d ...", 0)
 
 	n := 10
 	ka := make([]string, n)
@@ -98,6 +98,7 @@ func TestJoinLeave(t *testing.T) {
 	for i := 0; i < n; i++ {
 		ka[i] = strconv.Itoa(i) // ensure multiple shards
 		va[i] = randstring(5)
+        DPrintf("JoinLeave: %d put %s to %s ...", i, va[i], ka[i])
 		ck.Put(ka[i], va[i])
 	}
 	for i := 0; i < n; i++ {
@@ -111,16 +112,18 @@ func TestJoinLeave(t *testing.T) {
 		check(t, ck, ka[i], va[i])
 		x := randstring(5)
 		ck.Append(ka[i], x)
+        DPrintf("JoinLeave: %d append %s to %s: %s ...", i, x, ka[i], va[i])
 		va[i] += x
 	}
 
 	cfg.leave(0)
-    DPrintf("  ... cfg.leave(0)")
+    DPrintf("JoinLeave: leave %d ...", 0)
 
 	for i := 0; i < n; i++ {
 		check(t, ck, ka[i], va[i])
 		x := randstring(5)
 		ck.Append(ka[i], x)
+        DPrintf("JoinLeave: %d append %s to %s: %s ...", i, x, ka[i], va[i])
 		va[i] += x
 	}
 
@@ -382,8 +385,11 @@ func TestConcurrent2(t *testing.T) {
 	ck := cfg.makeClient()
 
 	cfg.join(1)
+    DPrintf("Concurrent2: join 1 ...")
 	cfg.join(0)
+    DPrintf("Concurrent2: join 0 ...")
 	cfg.join(2)
+    DPrintf("Concurrent2: join 2 ...")
 
 	n := 10
 	ka := make([]string, n)
@@ -392,6 +398,7 @@ func TestConcurrent2(t *testing.T) {
 		ka[i] = strconv.Itoa(i) // ensure multiple shards
 		va[i] = randstring(1)
 		ck.Put(ka[i], va[i])
+        DPrintf("Concurrent2: %d put %s: %s ...", i, ka[i], va[i]) // exactly 10 shards
 	}
 
 	var done int32
@@ -402,6 +409,7 @@ func TestConcurrent2(t *testing.T) {
 		for atomic.LoadInt32(&done) == 0 {
 			x := randstring(1)
 			ck1.Append(ka[i], x)
+            DPrintf("Concurrent2: %d append %s to %s: %s ...", i, x, ka[i], va[i])
 			va[i] += x
 			time.Sleep(50 * time.Millisecond)
 		}
@@ -413,22 +421,34 @@ func TestConcurrent2(t *testing.T) {
 	}
 
 	cfg.leave(0)
+    DPrintf("Concurrent2: leave 0...")
 	cfg.leave(2)
+    DPrintf("Concurrent2: leave 2 ...")
 	time.Sleep(3000 * time.Millisecond)
 	cfg.join(0)
+    DPrintf("Concurrent2: join 0 ...")
 	cfg.join(2)
+    DPrintf("Concurrent2: join 2 ...")
 	cfg.leave(1)
+    DPrintf("Concurrent2: leave 1 ...")
 	time.Sleep(3000 * time.Millisecond)
 	cfg.join(1)
+    DPrintf("Concurrent2: join 1 ...")
 	cfg.leave(0)
+    DPrintf("Concurrent2: leave 0 ...")
 	cfg.leave(2)
+    DPrintf("Concurrent2: leave 2 ...")
 	time.Sleep(3000 * time.Millisecond)
 
 	cfg.ShutdownGroup(1)
+    DPrintf("Concurrent2: shutdown 1 ...")
 	cfg.ShutdownGroup(2)
+    DPrintf("Concurrent2: shutdown 2 ...")
 	time.Sleep(1000 * time.Millisecond)
 	cfg.StartGroup(1)
+    DPrintf("Concurrent2: start 1 ...")
 	cfg.StartGroup(2)
+    DPrintf("Concurrent2: start 2 ...")
 
 	time.Sleep(2 * time.Second)
 

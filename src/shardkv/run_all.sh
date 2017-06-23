@@ -1,4 +1,4 @@
-for i in {1..1}
+for i in {1..100}
 do
     rm log*
     go test -run StaticShards -v
@@ -17,7 +17,8 @@ do
     rc=$?
     if [[ $rc != 0 ]]; then exit $rc; fi
     rm log*
-    go test -run Concurrent -v
+    go test -run Concurrent1 -v
+    go test -run Concurrent2 -v
     rc=$?
     if [[ $rc != 0 ]]; then exit $rc; fi
     rm log*

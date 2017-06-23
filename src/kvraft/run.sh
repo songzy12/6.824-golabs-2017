@@ -1,7 +1,7 @@
-for i in {1..20}
+for i in {1..100}
 do
-    rm log
-    go test -run TestSnapshotUnreliable$ -v
+    rm log*
+    go test -run SnapshotRecoverManyClients$ -v > res
     rc=$?;
     if [[ $rc != 0 ]]; then exit $rc; fi
 done

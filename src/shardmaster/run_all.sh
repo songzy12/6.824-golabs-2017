@@ -1,5 +1,5 @@
 rm log*
-for i in {1..1}
+for i in {1..10}
 do
     go test -run Basic -v
     rc=$?

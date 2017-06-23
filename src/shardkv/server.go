@@ -7,7 +7,6 @@ import "raft"
 import "sync"
 import "time"
 import "encoding/gob"
-import "log"
 import "bytes"
 
 
@@ -21,6 +20,7 @@ type Op struct {
     Value   string
     Id      int64
     Serial  int
+    Err     Err
 
     Args    interface{}
 }
@@ -44,10 +44,10 @@ type ShardKV struct {
     cfg     shardmaster.Config
 }
 
-func (kv *ShardKV) AppendEntry(entry Op) bool {
+func (kv *ShardKV) AppendEntry(entry Op) (bool, Err) {
 	index, _, isLeader := kv.rf.Start(entry)
 	if !isLeader {
-		return false
+		return false, OK
 	}
 
 	kv.mu.Lock()
@@ -64,10 +64,10 @@ func (kv *ShardKV) AppendEntry(entry Op) bool {
         // when applyCh finished applying, it send msg back
 		case op := <-ch:
             // op may be ReconfigureArgs
-			return op.Id == entry.Id && op.Serial == entry.Serial
+			return op.Id == entry.Id && op.Serial == entry.Serial, op.Err
 		case <-time.After(200 * time.Millisecond):
             DPrintf("AppendEntry timeout")
-			return false
+			return false, OK
 	}
 }
 
@@ -81,32 +81,26 @@ func (kv *ShardKV) IsDone(id int64, serial int) bool {
 }
 
 func (kv *ShardKV) Apply(args Op) {
-    DPrintf("Op: %s", args.Op)
-
+    DPrintf("PutAppend %s to %s: %s", args.Value, args.Key,
+            kv.db[key2shard(args.Key)][args.Key])
 	switch args.Op {
 	case "Put":
-    if !kv.CheckValidKey(args.Key) {
-        return
-    }
     kv.db[key2shard(args.Key)][args.Key] = args.Value
 	case "Append":
-    if !kv.CheckValidKey(args.Key) {
-        return
-    }
     kv.db[key2shard(args.Key)][args.Key] += args.Value
     case "Reconfigure":
 		args := args.Args.(ReconfigureArgs)
-		DPrintf("args.Cfg.Num: %d, kv.cfg.Num: %d", args.Cfg.Num, kv.cfg.Num)
+		DPrintf("Reconfigure args.Cfg.Num: %d, kv.cfg.Num: %d", args.Cfg.Num, kv.cfg.Num)
         if args.Cfg.Num <= kv.cfg.Num {
             return
         }
 		// already reached consensus, merge db and ack
 		for shardIndex, data := range args.StoreShard {
-            DPrintf("kv.db: %v", kv.db)
+            DPrintf("kv.db of %d before reconfigure: %v", kv.me, kv.db)
 			for k, v := range data {
 				kv.db[shardIndex][k] = v
 			}
-            DPrintf("kv.db: %v", kv.db)
+            DPrintf("kv.db of %d after reconfigure: %v", kv.me, kv.db)
 		}
 		for clientId := range args.Ack {
 			if _, exist := kv.done[clientId]; !exist || kv.done[clientId] < args.Ack[clientId] {
@@ -122,6 +116,7 @@ func (kv *ShardKV) Apply(args Op) {
 
 func (kv *ShardKV) CheckValidKey(key string) bool {
 	shardId := key2shard(key)
+    DPrintf("kv.gid: %d, kv.cfg.Shards[%d]: %d", kv.gid, shardId, kv.cfg.Shards[shardId])
 	if kv.gid != kv.cfg.Shards[shardId] {
 		return false
 	}
@@ -132,23 +127,19 @@ func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
 	// Your code here.
     entry := Op{Op:"Get", Key:args.Key, Id:args.Id, Serial:args.Serial}
 
-	ok := kv.AppendEntry(entry)
+	ok, Err := kv.AppendEntry(entry)
+    DPrintf("%v append entry %v returns %v, %s", kv.rf, entry, ok, Err)
 	if !ok {
 		reply.WrongLeader = true
 	} else {
-		reply.WrongLeader = false
-
 		// reconfigure
-        if !kv.CheckValidKey(args.Key) {
-            reply.Err = ErrWrongGroup
-            return
-        }
+		reply.WrongLeader = false
+		reply.Err = Err
 
-		reply.Err = OK
 		kv.mu.Lock()
-		reply.Value = kv.db[key2shard(args.Key)][args.Key]
+		reply.Value = kv.db[key2shard(args.Key)][args.Key] // since we need to set reply.Value
 		kv.done[args.Id] = args.Serial // this is Apply
-		log.Printf("%d get:%v value:%s\n",kv.me,entry,reply.Value)
+		DPrintf("%d get:%v value:%s\n",kv.me,entry,reply.Value)
 		kv.mu.Unlock()
 	}
 }
@@ -157,19 +148,15 @@ func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	// Your code here.
 	entry := Op{Op:args.Op, Key:args.Key, Value:args.Value,
 				Id:args.Id, Serial:args.Serial}
-	ok := kv.AppendEntry(entry)
-    //DPrintf("%v append entry %v returns %v", kv.rf, entry, ok)
+
+	ok, Err := kv.AppendEntry(entry)
+    DPrintf("%v append entry %v returns %v, %s", kv.rf, entry, ok, Err)
 	if !ok {
 		reply.WrongLeader = true
 	} else {
 		// reconfigure
-        if !kv.CheckValidKey(args.Key) {
-            reply.Err = ErrWrongGroup
-            return
-        }
-
 		reply.WrongLeader = false
-		reply.Err = OK
+		reply.Err = Err
 	}
 }
 
@@ -430,9 +417,20 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 				op := msg.Command.(Op) // this is type assertion
 				kv.mu.Lock()
 
-				if op.Op == "Reconfigure" || !kv.IsDone(op.Id, op.Serial) {
+                DPrintf("Apply Message: %v", op)
+                op.Err = OK
+
+				if op.Op == "Reconfigure" {
 					kv.Apply(op)
-				}
+				} else {
+                    if !kv.CheckValidKey(op.Key) {
+                        DPrintf("Not Valid Key: %v", op)
+                        op.Err = ErrWrongGroup
+                    } else if !kv.IsDone(op.Id, op.Serial) {
+                        kv.Apply(op)
+                        // else if rather than if
+                    }
+                }
 
 				ch, ok := kv.result[msg.Index]
 				if ok {
@@ -440,6 +438,7 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 						case <-kv.result[msg.Index]:
 						default:
 					}
+                    // here we do not know where Apply succeed 
 					ch <- op
 				} else {
 					kv.result[msg.Index] = make(chan Op, 1)

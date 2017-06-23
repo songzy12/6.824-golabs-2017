@@ -1,5 +1,7 @@
 log*
+res*
 pkg/
 api.key
 *.swp
 *-handin.tar.gz
+*temp/
