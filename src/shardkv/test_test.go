@@ -639,9 +639,11 @@ func TestChallenge1Delete(t *testing.T) {
 	total := 0
 	for gi := 0; gi < cfg.ngroups; gi++ {
 		for i := 0; i < cfg.n; i++ {
+            // rf.CurrentTerm, rf.VotedFor, rf.Log
 			raft := cfg.groups[gi].saved[i].RaftStateSize()
 			snap := len(cfg.groups[gi].saved[i].ReadSnapshot())
 			total += raft + snap
+            DPrintf("Test Delete raft: %d, snap: %d, total: %d", raft, snap, total)
 		}
 	}
 

@@ -188,6 +188,7 @@ func (kv *ShardKV) SendTransferShard(gid int, args *TransferArgs, reply *Transfe
 		if ok {
 			DPrintf("reply.Err: %s", reply.Err)
 			if reply.Err == OK {
+                // Delete: need to clear all logs here
 				return true
 			} else if reply.Err == ErrNotReady {
 				return false
