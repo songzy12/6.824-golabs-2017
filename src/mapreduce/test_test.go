@@ -40,7 +40,7 @@ func ReduceFunc(key string, values []string) string {
 	return ""
 }
 
-// Checks input file agaist output file: each input number should show up
+// Checks input file against output file: each input number should show up
 // in the output file in string sorted order
 func check(t *testing.T, files []string) {
 	output, err := os.Open("mrtmp.test")
@@ -72,7 +72,7 @@ func check(t *testing.T, files []string) {
 		text := outputScanner.Text()
 		n, err := fmt.Sscanf(lines[i], "%d", &v1)
 		if n == 1 && err == nil {
-			n, err = fmt.Sscanf(text, "%d", &v2)
+			_, err = fmt.Sscanf(text, "%d", &v2)
 		}
 		if err != nil || v1 != v2 {
 			t.Fatalf("line %d: %d != %d err %v\n", i, v1, v2, err)
@@ -94,7 +94,7 @@ func checkWorker(t *testing.T, l []int) {
 	}
 }
 
-// Make input file
+// Make num input files, where each file contains nNumber/num lines of integers.
 func makeInputs(num int) []string {
 	var names []string
 	var i = 0
@@ -112,6 +112,7 @@ func makeInputs(num int) []string {
 		w.Flush()
 		file.Close()
 	}
+	fmt.Printf("makeInputs: %v\n", names)
 	return names
 }
 
