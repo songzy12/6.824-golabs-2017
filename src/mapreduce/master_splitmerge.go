@@ -36,6 +36,7 @@ func (mr *Master) merge() {
 	for k := range kvs {
 		keys = append(keys, k)
 	}
+	// TODO(songzy): use merge sort here.
 	sort.Strings(keys)
 
 	file, err := os.Create("mrtmp." + mr.jobName)
@@ -44,7 +45,7 @@ func (mr *Master) merge() {
 	}
 	w := bufio.NewWriter(file)
 	for _, k := range keys {
-		fmt.Fprintf(w, "%s: %s\n", k, kvs[k])
+		fmt.Fprintf(w, "%s\n", kvs[k])
 	}
 	w.Flush()
 	file.Close()
