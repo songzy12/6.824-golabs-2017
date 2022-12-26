@@ -2,6 +2,7 @@ package mapreduce
 
 import (
 	"encoding/json"
+	"fmt"
 	"hash/fnv"
 	"io"
 	"io/ioutil"
@@ -44,7 +45,9 @@ func doMap(
 
 	encList := []*json.Encoder{}
 	for r := 0; r < nReduce; r++ {
-		file, _ := os.Create(reduceName(jobName, mapTaskNumber, r))
+		name := reduceName(jobName, mapTaskNumber, r)
+		fmt.Printf("outFile: %s\n", name)
+		file, _ := os.Create(name)
 		defer file.Close()
 
 		fileWriter := io.Writer(file)

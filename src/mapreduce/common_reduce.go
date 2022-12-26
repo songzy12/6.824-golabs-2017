@@ -2,6 +2,7 @@ package mapreduce
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -24,7 +25,7 @@ func doReduce(
 	// You'll need to read one intermediate file from each map task;
 	// reduceName(jobName, m, reduceTaskNumber) yields the file
 	// name from map task m.
-
+	fmt.Printf("outFile: %v\n", outFile)
 	file, _ := os.Create(outFile)
 	defer file.Close()
 
@@ -35,7 +36,9 @@ func doReduce(
 
 	for m := 0; m < nMap; m++ {
 		var kv KeyValue
-		inFile, err := os.Open(reduceName(jobName, m, reduceTaskNumber))
+		name := reduceName(jobName, m, reduceTaskNumber)
+		fmt.Printf("inFile: %v\n", name)
+		inFile, err := os.Open(name)
 		if err != nil {
 			log.Fatal("doReduce: ", err)
 		}

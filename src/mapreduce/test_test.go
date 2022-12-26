@@ -137,7 +137,9 @@ func setup() *Master {
 }
 
 func cleanup(mr *Master) {
+	// Remove map/reduce/merge files.
 	mr.CleanupFiles()
+	// Remove input files.
 	for _, f := range mr.files {
 		removeFile(f)
 	}

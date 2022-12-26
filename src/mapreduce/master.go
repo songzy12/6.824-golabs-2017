@@ -66,15 +66,18 @@ func Sequential(jobName string, files []string, nreduce int,
 		switch phase {
 		case mapPhase:
 			for i, f := range mr.files {
+				fmt.Printf("\nMap %v\n", i)
 				doMap(mr.jobName, i, f, mr.nReduce, mapF)
 			}
 		case reducePhase:
 			for i := 0; i < mr.nReduce; i++ {
+				fmt.Printf("\nReduce %v\n", i)
 				doReduce(mr.jobName, i, mergeName(mr.jobName, i), len(mr.files), reduceF)
 			}
 		}
 	}, func() {
 		mr.stats = []int{len(files) + nreduce}
+		fmt.Printf("\nFinish\n%v + %v\n", len(files), nreduce)
 	})
 	return
 }
@@ -137,14 +140,14 @@ func (mr *Master) run(jobName string, files []string, nreduce int,
 	mr.files = files
 	mr.nReduce = nreduce
 
-	fmt.Printf("%s: Starting Map/Reduce task %s\n", mr.address, mr.jobName)
+	fmt.Printf("\n%s: Starting Map/Reduce task %s\n", mr.address, mr.jobName)
 
 	schedule(mapPhase)
 	schedule(reducePhase)
 	finish()
 	mr.merge()
 
-	fmt.Printf("%s: Map/Reduce task completed\n", mr.address)
+	fmt.Printf("\n%s: Map/Reduce task completed\n", mr.address)
 
 	mr.doneChannel <- true
 }
@@ -166,7 +169,7 @@ func (mr *Master) killWorkers() []int {
 		debug("Master: shutdown worker %s\n", w)
 		var reply ShutdownReply
 		ok := call(w, "Worker.Shutdown", new(struct{}), &reply)
-		if ok == false {
+		if !ok {
 			fmt.Printf("Master: RPC %s shutdown error\n", w)
 		} else {
 			ntasks = append(ntasks, reply.Ntasks)

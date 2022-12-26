@@ -12,12 +12,12 @@ import (
 // merge combines the results of the many reduce jobs into a single output file
 // XXX use merge sort
 func (mr *Master) merge() {
-	debug("Merge phase")
 	kvs := make(map[string]string)
+	fmt.Printf("\nMerge\n")
 	for i := 0; i < mr.nReduce; i++ {
-		p := mergeName(mr.jobName, i)
-		fmt.Printf("Merge: read %s\n", p)
-		file, err := os.Open(p)
+		name := mergeName(mr.jobName, i)
+		fmt.Printf("inFile: %s\n", name)
+		file, err := os.Open(name)
 		if err != nil {
 			log.Fatal("Merge: ", err)
 		}
@@ -39,7 +39,9 @@ func (mr *Master) merge() {
 	// TODO(songzy): use merge sort here.
 	sort.Strings(keys)
 
-	file, err := os.Create("mrtmp." + mr.jobName)
+	name := "mrtmp." + mr.jobName
+	fmt.Printf("outFile: %s\n", name)
+	file, err := os.Create(name)
 	if err != nil {
 		log.Fatal("Merge: create ", err)
 	}
