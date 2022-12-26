@@ -82,3 +82,7 @@ https://go.dev/blog/using-go-modules
 > With Go modules, versions are referenced with semantic version tags. A semantic version has three parts: major, minor, and patch. For example, for v0.1.2, the major version is 0, the minor version is 1, and the patch version is 2.
 
 > The go mod tidy command cleans up these unused dependencies.
+
+### go.work
+
+https://github.com/golang/tools/blob/master/gopls/doc/workspace.md
