@@ -1,12 +1,12 @@
 package mapreduce
 
 import (
-    "encoding/json"
+	"encoding/json"
 	"hash/fnv"
-    "io"
-    "io/ioutil"
-    "log"
-    "os"
+	"io"
+	"io/ioutil"
+	"log"
+	"os"
 )
 
 // doMap manages one map task: it reads one of the input files
@@ -36,29 +36,29 @@ func doMap(
 	// key/value pairs for reduce; see common.go for the definition of
 	// KeyValue.
 
-    value, err := ioutil.ReadFile(inFile)
-    if err != nil {
-        log.Fatal("doMap: ", err)
-    }
-    kvs := mapF(inFile, string(value))
+	value, err := ioutil.ReadFile(inFile)
+	if err != nil {
+		log.Fatal("doMap: ", err)
+	}
+	kvs := mapF(inFile, string(value))
 
-    encList := []*json.Encoder{}
-    for r := 0; r < nReduce; r++ {
-        file, _ := os.Create(reduceName(jobName, mapTaskNumber, r))
-        defer file.Close()
+	encList := []*json.Encoder{}
+	for r := 0; r < nReduce; r++ {
+		file, _ := os.Create(reduceName(jobName, mapTaskNumber, r))
+		defer file.Close()
 
-        fileWriter := io.Writer(file)
-        enc := json.NewEncoder(fileWriter)
+		fileWriter := io.Writer(file)
+		enc := json.NewEncoder(fileWriter)
 
-        encList = append(encList, enc)
-    }
+		encList = append(encList, enc)
+	}
 
-    for _, kv := range kvs {
-        err = encList[ihash(kv.Key) % nReduce].Encode(&kv)
-        if err != nil {
-            log.Fatal("doMap: ", err)
-        }
-    }
+	for _, kv := range kvs {
+		err = encList[ihash(kv.Key)%nReduce].Encode(&kv)
+		if err != nil {
+			log.Fatal("doMap: ", err)
+		}
+	}
 
 	// Look at Go's ioutil and os packages for functions to read
 	// and write files.

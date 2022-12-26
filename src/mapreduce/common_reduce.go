@@ -1,10 +1,10 @@
 package mapreduce
 
 import (
-    "encoding/json"
-    "io"
-    "log"
-    "os"
+	"encoding/json"
+	"io"
+	"log"
+	"os"
 )
 
 // doReduce manages one reduce task: it reads the intermediate
@@ -25,35 +25,35 @@ func doReduce(
 	// reduceName(jobName, m, reduceTaskNumber) yields the file
 	// name from map task m.
 
-    file, _ := os.Create(outFile)
-    defer file.Close()
+	file, _ := os.Create(outFile)
+	defer file.Close()
 
-    fileWriter := io.Writer(file)
-    enc := json.NewEncoder(fileWriter)
+	fileWriter := io.Writer(file)
+	enc := json.NewEncoder(fileWriter)
 
-    var keys = make(map[string][]string)
+	var keys = make(map[string][]string)
 
-    for m := 0; m < nMap; m++ {
-        var kv KeyValue
-        inFile, err := os.Open(reduceName(jobName, m, reduceTaskNumber))
-        if err != nil {
-            log.Fatal("doReduce: ", err)
-        }
-        defer inFile.Close()
+	for m := 0; m < nMap; m++ {
+		var kv KeyValue
+		inFile, err := os.Open(reduceName(jobName, m, reduceTaskNumber))
+		if err != nil {
+			log.Fatal("doReduce: ", err)
+		}
+		defer inFile.Close()
 
-        jsonParser := json.NewDecoder(inFile)
-        for {
-            err = jsonParser.Decode(&kv);
-            if err != nil {
-                break
-            }
-            keys[kv.Key] = append(keys[kv.Key], kv.Value)
-        }
-    }
+		jsonParser := json.NewDecoder(inFile)
+		for {
+			err = jsonParser.Decode(&kv)
+			if err != nil {
+				break
+			}
+			keys[kv.Key] = append(keys[kv.Key], kv.Value)
+		}
+	}
 
-    for key, values := range keys {
-        enc.Encode(KeyValue{key, reduceF(key, values)})
-    }
+	for key, values := range keys {
+		enc.Encode(KeyValue{key, reduceF(key, values)})
+	}
 
 	//
 	// Your doMap() encoded the key/value pairs in the intermediate
