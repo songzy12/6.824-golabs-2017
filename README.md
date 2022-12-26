@@ -8,6 +8,9 @@ http://nil.csail.mit.edu/6.824/2017/labs/lab-1.html
 bash ./test-mr.sh
 ```
 
+- wc: word count.
+- ii: inverted index.
+
 ## Lab 2: Raft
 
 http://nil.csail.mit.edu/6.824/2017/labs/lab-raft.html
