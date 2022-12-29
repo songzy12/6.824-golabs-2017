@@ -89,3 +89,5 @@ https://go.dev/blog/using-go-modules
 ### go.work
 
 https://github.com/golang/tools/blob/master/gopls/doc/workspace.md
+
+> Starting with Go 1.18, the go command has native support for multi-module workspaces, via go.work files. These files are recognized by gopls starting with gopls@v0.8.0.
